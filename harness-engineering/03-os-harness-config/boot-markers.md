@@ -14,7 +14,7 @@ Quan trọng: `qemu-system-i386 -serial mon:stdio -display none` có thể captu
 |---|---|---|---|---|
 | `BOOT_OK` | Loader path đã tới protected mode sau khi BIOS disk read báo success; chưa chứng minh kernel identity nếu chưa verify magic/header | Sau protected-mode transition, trước jump/call kernel | Có | COM1 |
 | `KERNEL_INIT_OK` | `kernel_main()` chạy và kernel serial driver hoạt động | Đầu `kernel_main()`, ngay sau `serial_init()` | Có | COM1 |
-| `SHELL_READY` | Shell đang chờ input | Sau `shell_init()` | Tùy chọn | COM1 |
+| `SHELL_READY` | Shell đang chờ input | Sau `shell_init()` | Có trong current shell phase; tùy chọn trước khi có shell | COM1 |
 | `TESTS_PASS` | Internal integration tests pass | Sau khi chạy self-tests | Tùy chọn | COM1 |
 | `BOOT_DISK_ERROR` | Bootloader không đọc được kernel từ disk | Trong bootloader disk error path | Failure marker; fail nếu xuất hiện | COM1 |
 | `KERNEL_PANIC` | Kernel gặp lỗi nghiêm trọng | Trong panic handler trước khi halt | Failure marker; fail nếu xuất hiện | COM1 |
@@ -248,7 +248,8 @@ qemu_status=$?
 set -e
 
 case "$qemu_status" in
-    0|124) ;;
+    124) ;;
+    0) echo "[FAIL] qemu exited before timeout; possible shutdown or triple fault after markers"; exit 1 ;;
     *) echo "[FAIL] qemu exited with status $qemu_status"; exit 1 ;;
 esac
 
@@ -305,8 +306,8 @@ Timeline:
     ├─ emit "KERNEL_INIT_OK" on COM1
     ├─ vga_init()
     ├─ idt_init()
-    ├─ shell_init()              optional
-    ├─ emit "SHELL_READY"        optional
+    ├─ shell_init()              current shell phase
+    ├─ emit "SHELL_READY"        current shell phase required
     └─ shell_run() or halt loop
 ```
 

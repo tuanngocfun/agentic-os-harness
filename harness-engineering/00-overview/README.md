@@ -51,8 +51,8 @@ QEMU tương đối an toàn khi chạy bằng user thường với image file r
 | Rule | Áp dụng vào harness này |
 |---|---|
 | Measurable success | `build/boot.bin`, `build/boot_config.inc`, `build/kernel.elf`, `build/kernel.bin`, `build/os.img` tồn tại; `make test` pass với exact serial marker lines |
-| Agent episode evidence | Mỗi vòng agent ghi lại prompt/task, files touched, commands, QEMU status, artifact hashes, marker verdicts, blockers |
-| Risk gates | Build correctness -> serial markers -> regression checks -> safety constraints |
+| Agent episode evidence | Mỗi vòng agent ghi lại prompt/task, files touched, Git status/diff, commands, QEMU status, artifact hashes, marker verdicts, blockers |
+| Risk gates | Git status/diff -> build correctness -> serial markers -> regression checks -> safety constraints |
 | Source authority | QEMU/NASM/binutils docs cho tool behavior; OSDev cho boot-sector convention |
 
 ## Cấu trúc tài liệu
@@ -62,6 +62,7 @@ QEMU tương đối an toàn khi chạy bằng user thường với image file r
 01-project-setup/      ← Host/toolchain preflight
 02-core-harness/       ← AGENTS.md, SKILL.md, Sub-Agents, Memory
 03-os-harness-config/  ← OS-specific: boot sequence, build, QEMU, boot markers
+12-git-change-management/ ← Git workflow and handoff gates
 ```
 
 ## Tài liệu tham khảo chính
@@ -79,3 +80,8 @@ QEMU tương đối an toàn khi chạy bằng user thường với image file r
 11. [Meta Unified AI Agents](https://engineering.fb.com/2026/04/16/developer-tools/capacity-efficiency-at-meta-how-unified-ai-agents-optimize-performance-at-hyperscale/)
 12. [Meta Diff Risk Score](https://engineering.fb.com/2025/08/06/developer-tools/diff-risk-score-drs-ai-risk-aware-software-development-meta/)
 13. [Birgitta Böckeler - Harness Engineering for Coding Agent Users](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html)
+14. [Google Engineering Practices - Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
+15. [Microsoft Azure Repos Branch Policies](https://learn.microsoft.com/en-us/azure/devops/repos/git/branch-policies?view=azure-devops)
+16. [Swift.org Contributing](https://www.swift.org/contributing/)
+17. [Netflix TechBlog - Improving Pull Request Confidence](https://netflixtechblog.medium.com/improving-pull-request-confidence-for-the-netflix-tv-app-b85edb05eb65)
+18. [Tesla Fleet Telemetry Contributing](https://github.com/teslamotors/fleet-telemetry/blob/main/CONTRIBUTING.md)

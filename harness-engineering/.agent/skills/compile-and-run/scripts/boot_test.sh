@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -u
 
+PATH="${TOOLCHAIN_PATH:-/home/ngocnt/opt/cross/bin:/home/ngocnt/opt/bin}:$PATH"
+
 BUILD_DIR="${BUILD_DIR:-build}"
 OS_IMG="${OS_IMG:-build/os.img}"
 SERIAL_LOG="$BUILD_DIR/serial.log"
@@ -10,6 +12,8 @@ EVIDENCE_LOG="$BUILD_DIR/evidence.jsonl"
 LOCK_DIR="$BUILD_DIR/.boot_test.lock"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-30}"
 TASK_NAME="${TASK_NAME:-boot-test}"
+QEMU="${QEMU:-qemu-system-i386}"
+ALLOW_QEMU_EXIT="${ALLOW_QEMU_EXIT:-0}"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -53,23 +57,26 @@ write_evidence() {
 
   boot_ok=false
   kernel_ok=false
+  shell_ready=false
   boot_disk_error=false
   kernel_panic=false
   marker_present "BOOT_OK" && boot_ok=true
   marker_present "KERNEL_INIT_OK" && kernel_ok=true
+  marker_present "SHELL_READY" && shell_ready=true
   marker_present "BOOT_DISK_ERROR" && boot_disk_error=true
   marker_present "KERNEL_PANIC" && kernel_panic=true
 
   task_json="$(json_escape "$TASK_NAME")"
-  printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","sector_count":{"kernel_sectors":"%s","phase1_chs_limit":17},"markers":{"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"BOOT_DISK_ERROR":%s,"KERNEL_PANIC":%s},"safety":{"os_img":"%s","monitor_none":true,"nic_none":true,"serial_file":true},"verdict":"%s"}\n' \
+  printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","sector_count":{"kernel_sectors":"%s","phase1_chs_limit":120},"markers":{"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"SHELL_READY":%s,"BOOT_DISK_ERROR":%s,"KERNEL_PANIC":%s},"safety":{"os_img":"%s","monitor_none":true,"nic_none":true,"serial_file":true},"verdict":"%s"}\n' \
     "$run_id" "$task_json" "$started_at" "$ended_at" "$qemu_status" \
     "$boot_bytes" "$boot_sha" "$kernel_bytes" "$kernel_sha" "$serial_sha" "$sectors" \
-    "$boot_ok" "$kernel_ok" "$boot_disk_error" "$kernel_panic" "$OS_IMG" "$verdict" >> "$EVIDENCE_LOG"
+    "$boot_ok" "$kernel_ok" "$shell_ready" "$boot_disk_error" "$kernel_panic" "$OS_IMG" "$verdict" >> "$EVIDENCE_LOG"
 }
 
 [ "$BUILD_DIR" = "build" ] || fail "BUILD_DIR must be build"
 [ "$OS_IMG" = "build/os.img" ] || fail "OS_IMG must be build/os.img"
 [ -f "$OS_IMG" ] || fail "$OS_IMG not found; run make all first"
+command -v "$QEMU" >/dev/null 2>&1 || fail "$QEMU not found in PATH"
 
 mkdir -p "$BUILD_DIR"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
@@ -85,7 +92,7 @@ run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 set +e
-timeout "$TIMEOUT_SECONDS" qemu-system-i386 \
+timeout "$TIMEOUT_SECONDS" "$QEMU" \
   -drive file="$OS_IMG",format=raw \
   -m 512M \
   -serial file:"$SERIAL_LOG" \
@@ -100,7 +107,14 @@ set -e
 tr -d '\r' < "$SERIAL_LOG" > "$SERIAL_CLEAN"
 
 case "$qemu_status" in
-  0|124) ;;
+  124) ;;
+  0)
+    if [ "$ALLOW_QEMU_EXIT" != "1" ]; then
+      ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      write_evidence "$run_id" "$started_at" "$ended_at" "$qemu_status" "fail"
+      fail "qemu exited before timeout; this can indicate shutdown or triple fault after markers"
+    fi
+    ;;
   *)
     ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     write_evidence "$run_id" "$started_at" "$ended_at" "$qemu_status" "fail"
@@ -109,7 +123,7 @@ case "$qemu_status" in
 esac
 
 pass=true
-for marker in BOOT_OK KERNEL_INIT_OK; do
+for marker in BOOT_OK KERNEL_INIT_OK SHELL_READY; do
   if marker_present "$marker"; then
     echo "[PASS] $marker"
   else

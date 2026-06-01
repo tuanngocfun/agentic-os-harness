@@ -84,7 +84,7 @@ CFLAGS = -ffreestanding -fno-builtin -fno-stack-protector \
          -fno-pic -fno-pie -Wall -Wextra -Iinclude -MMD -MP -c
 LDFLAGS = -T linker.ld -ffreestanding -nostdlib -Wl,--build-id=none
 LIBS = -lgcc
-KERNEL_MAX_CHS_SECTORS = 17
+KERNEL_MAX_CHS_SECTORS = 120
 
 # Artifacts
 BOOT_BIN = $(BUILD_DIR)/boot.bin
@@ -106,15 +106,15 @@ guard-paths:
 	@test "$(OS_IMG)" = "build/os.img" || { echo "ERROR: OS_IMG must be build/os.img"; exit 1; }
 	@test -n "$(BUILD_DIR)" || { echo "ERROR: BUILD_DIR is empty"; exit 1; }
 	@test -n "$(OS_IMG)" || { echo "ERROR: OS_IMG is empty"; exit 1; }
-	@test "$(KERNEL_MAX_CHS_SECTORS)" = "17" || { echo "ERROR: phase-1 CHS profile requires KERNEL_MAX_CHS_SECTORS=17"; exit 1; }
+	@test "$(KERNEL_MAX_CHS_SECTORS)" = "120" || { echo "ERROR: phase-1 track-rolling CHS profile requires KERNEL_MAX_CHS_SECTORS=120"; exit 1; }
 
 $(BOOT_CONFIG): guard-paths $(KERNEL_BIN)
 	@mkdir -p $(BUILD_DIR)
 	@sectors=$$((($$(wc -c < $(KERNEL_BIN)) + 511) / 512)); \
 	if [ "$$sectors" -lt 1 ]; then sectors=1; fi; \
 	if [ "$$sectors" -gt "$(KERNEL_MAX_CHS_SECTORS)" ]; then \
-		echo "ERROR: kernel.bin requires $$sectors sectors; CHS single-read loader supports max $(KERNEL_MAX_CHS_SECTORS)"; \
-		echo "Switch to track-rolling CHS, LBA INT 13h AH=42h, or a 2-stage loader before growing the kernel."; \
+		echo "ERROR: kernel.bin requires $$sectors sectors; CHS track-rolling loader supports max $(KERNEL_MAX_CHS_SECTORS)"; \
+		echo "Switch to LBA INT 13h AH=42h or a 2-stage loader before growing beyond this profile."; \
 		exit 1; \
 	fi; \
 	printf 'KERNEL_SECTORS equ %s\n' "$$sectors" > $@
@@ -242,7 +242,7 @@ SECTIONS
 
 7. Generate build/boot_config.inc from build/kernel.bin size
    -> `KERNEL_SECTORS equ <ceil(kernel_size / 512)>`.
-   -> For the initial CHS single-read loader, fail if this exceeds 17 sectors.
+   -> For the track-rolling CHS loader, fail if this exceeds 120 sectors.
 
 8. nasm -Ibuild/ -f bin boot/boot.asm -o build/boot.bin
    -> Tạo flat boot sector 512 bytes, kết thúc bằng signature 0xAA55.
@@ -267,7 +267,7 @@ SECTIONS
 - `kernel.elf` is a debug/link artifact; `kernel.bin` is the raw boot artifact.
 - `_start` must live in `.entry`, and linker script must `KEEP(*(.entry))` before other text sections.
 - `boot_config.inc` is generated from `kernel.bin`; do not silently hardcode stale sector counts.
-- The initial CHS single-read bootloader must keep `KERNEL_SECTORS <= 17`; larger kernels require track-rolling CHS, LBA, or a 2-stage loader.
+- The current phase-1 CHS bootloader rolls across floppy tracks and must keep `KERNEL_SECTORS <= 120`; larger kernels require LBA or a 2-stage loader.
 - `boot.bin` must be exactly 512 bytes. If first-stage code exceeds the limit, use a 2-stage bootloader.
 - If headers include `<stdint.h>`, do not use `-nostdinc` unless the project provides its own `include/stdint.h`.
 - Automated tests read COM1 serial output; VGA text does not appear in `build/serial.log`.
@@ -280,7 +280,7 @@ SECTIONS
 | QEMU says no bootable device | Boot sector is not flat 512-byte binary or missing 0xAA55 | Build with `nasm -f bin`; verify last bytes are `55 aa` |
 | Kernel jumps into garbage | Bootloader loaded ELF headers instead of raw code | Use `objcopy -O binary kernel.elf kernel.bin` |
 | Kernel crashes after growing | Bootloader reads too few sectors | Generate `boot_config.inc` from `kernel.bin` size |
-| Kernel exceeds 17 sectors | CHS single-read bootloader cannot cross the first track safely | Switch to track-rolling CHS, LBA, or a 2-stage loader |
+| Kernel exceeds 120 sectors | Phase-1 CHS loader profile too small | Switch to LBA or a 2-stage loader |
 | NASM says `TIMES value negative` | First-stage boot sector exceeds 512 bytes | Split into 2-stage bootloader |
 | `undefined reference to 'kernel_main'` | Chưa extern trong `entry.asm` hoặc chưa link `kernel.o` | Add `[extern kernel_main]` and include `kernel.o` |
 | `undefined reference to '__stack_chk_fail'` | Stack protector enabled | Add `-fno-stack-protector` |

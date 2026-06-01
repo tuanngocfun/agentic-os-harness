@@ -103,7 +103,11 @@ qemu_status=$?
 set -e
 
 case "$qemu_status" in
-    0|124)
+    124)
+        ;;
+    0)
+        echo "[FAIL] qemu exited before timeout; possible shutdown or triple fault after markers"
+        exit 1
         ;;
     *)
         echo "[FAIL] qemu exited with status $qemu_status"
@@ -190,7 +194,7 @@ KERNEL_INIT_OK
 SHELL_READY
 ```
 
-`SHELL_READY` là optional marker. Test cơ bản không fail nếu marker này chưa có.
+`SHELL_READY` chỉ optional ở phase chưa có shell. Trong current shell phase, `make test` phải require marker này và chạy thêm shell-runtime test để kiểm tra `help` + `echo ok` trên VGA text.
 
 ### Boot thất bại
 

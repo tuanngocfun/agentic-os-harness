@@ -21,6 +21,7 @@ Section này là preflight trước khi agent viết OS code. Nó khóa environm
 | `nasm` | Assemble boot sector and kernel entry |
 | `qemu-system-i386` | Run automated boot tests |
 | `make` | Build orchestration |
+| `git` | Source-of-truth, diff, handoff, and tracked artifact checks |
 | `wc`, `dd`, `grep`, `timeout`, `sha256sum` | Validation scripts |
 
 ## Preflight Checks
@@ -31,6 +32,13 @@ i686-elf-objcopy --version
 nasm -v
 qemu-system-i386 --version
 make --version
+git --version
+```
+
+Git preflight, when the harness lives inside a repo:
+
+```bash
+.agent/skills/git-change-management/scripts/git_preflight.sh
 ```
 
 ## Toolchain Bootstrap Gate
@@ -70,6 +78,7 @@ If the cross-compiler is not already installed:
 - Build gate: Makefile creates `boot.bin`, `boot_config.inc`, `kernel.elf`, `kernel.bin`, `os.img`.
 - Boot gate: `make test` captures dedicated COM1 markers in `build/serial.log`, with QEMU diagnostics in `build/qemu.log`.
 - Discovery gate: root `llms.txt` exists and links to AGENTS, validation, safety, and skills.
+- Git gate: repo root is known, worktree status is reported, generated artifacts are ignored/untracked, and no Git write action is performed without explicit approval.
 
 ## Notes
 
@@ -77,3 +86,4 @@ If the cross-compiler is not already installed:
 - Do not use host `gcc` for kernel code.
 - Do not make shell readiness a required marker until shell exists.
 - Do not continue after preflight failure; fix environment first.
+- Do not commit or stage generated build artifacts.

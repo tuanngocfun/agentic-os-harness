@@ -10,10 +10,12 @@
 - [Safety](./09-safety-and-security/README.md) — QEMU host safety and evidence isolation.
 - [Implementation Checklist](./10-implementation-checklist/README.md) — Pre-implementation gate checklist.
 - [Reference](./11-reference/README.md) — Anti-patterns, glossary, source map.
+- [Git Change Management](./12-git-change-management/README.md) — Git status, branch, diff, staging, commit, push, and handoff gates.
 
 ## Executable Skills
 - [compile-and-run](./.agent/skills/compile-and-run/SKILL.md) — Build OS image and run QEMU boot marker test.
 - [regression-validation](./.agent/skills/regression-validation/SKILL.md) — Run harness contract drift and materialization checks.
+- [git-change-management](./.agent/skills/git-change-management/SKILL.md) — Read-only Git preflight and change handoff checks.
 
 ## Human Skill Index
 - [OS Skills](./04-skills/README.md) — Bootloader, GDT, kernel entry, serial, runtime primitives, regression validation.
@@ -28,3 +30,10 @@
 - [OSDev Wiki](https://wiki.osdev.org)
 - [Intel SDM](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
 - [Birgitta Böckeler - Harness Engineering](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html)
+- [Google Engineering Practices - Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
+- [Google Engineering Practices - Code Review Standard](https://google.github.io/eng-practices/review/reviewer/standard.html)
+- [Meta Diff Risk Score](https://engineering.fb.com/2025/08/06/developer-tools/diff-risk-score-drs-ai-risk-aware-software-development-meta/)
+- [Microsoft Azure Repos Branch Policies](https://learn.microsoft.com/en-us/azure/devops/repos/git/branch-policies?view=azure-devops)
+- [Swift.org Contributing](https://www.swift.org/contributing/)
+- [Netflix TechBlog - Improving Pull Request Confidence](https://netflixtechblog.medium.com/improving-pull-request-confidence-for-the-netflix-tv-app-b85edb05eb65)
+- [Tesla Fleet Telemetry Contributing](https://github.com/teslamotors/fleet-telemetry/blob/main/CONTRIBUTING.md)

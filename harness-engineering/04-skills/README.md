@@ -25,7 +25,7 @@ Mỗi skill phải có:
 2. Keep bootloader separate from kernel objects.
 3. Initialize `DS`, `ES`, `SS`, and `SP` before memory/string/disk access.
 4. Include generated `boot_config.inc` for `KERNEL_SECTORS`; do not hardcode stale counts.
-5. For the phase-1 CHS loader, enforce `KERNEL_SECTORS <= 17`; switch to track-rolling CHS, LBA, or 2-stage boot before the kernel grows beyond that.
+5. For the current phase-1 track-rolling CHS loader, enforce `KERNEL_SECTORS <= 120`; switch to LBA or 2-stage boot before the kernel grows beyond that.
 6. Emit `BOOT_OK` through COM1 serial after protected-mode transition, not VGA-only output. Treat it as loader-progress evidence, not kernel identity proof unless a magic/header check exists.
 7. Emit `BOOT_DISK_ERROR` through COM1 before halting on disk read failure.
 
@@ -34,7 +34,7 @@ Mỗi skill phải có:
 - Confirm no Makefile path writes `boot.o` to sector 0.
 - Confirm `build/boot.bin` is exactly 512 bytes.
 - Confirm `build/boot_config.inc` matches `ceil(size(kernel.bin) / 512)`.
-- Confirm phase-1 CHS sector count is `<= 17`, or that LBA/2-stage loading exists.
+- Confirm phase-1 CHS sector count is within the declared loader profile: `<= 120` for the current track-rolling loader, or that LBA/2-stage loading exists.
 - `make test` must find `BOOT_OK`.
 
 ### 2. `setup-gdt`
@@ -96,21 +96,24 @@ Mỗi skill phải có:
 
 **Inputs:** Makefile, `scripts/boot_test.sh`, all boot/kernel source files.
 
-**Output:** Build verdict and boot verdict.
+**Output:** Build verdict, boot-marker verdict, and current runtime verdicts.
 
 **Instructions:**
 1. Run `make all`.
-2. Run `make test`.
+2. Run `make test`; in the current shell phase this runs both `scripts/boot_test.sh` and `scripts/shell_test.sh`.
 3. Report missing artifacts or missing markers directly.
 4. Do not mask failure by claiming success from partial output.
-5. Ensure QEMU status is classified: `0` or timeout `124` can be accepted only after exact marker parsing passes.
+5. Treat timeout `124` as the normal pass status for a live kernel/shell after exact marker parsing passes. Treat early QEMU exit status `0` as failure unless a named shutdown test explicitly sets an allow-exit mode.
 6. Use dedicated serial evidence (`-serial file:build/serial.log -monitor none -nic none`), not `mon:stdio`.
 
 **Verification:**
-- Required artifacts: `build/boot.bin`, `build/boot_config.inc`, `build/kernel.elf`, `build/kernel.bin`, `build/os.img`, `build/serial.log`, `build/qemu.log`.
-- Required markers: `BOOT_OK`, `KERNEL_INIT_OK`.
+- Required boot artifacts: `build/boot.bin`, `build/boot_config.inc`, `build/kernel.elf`, `build/kernel.bin`, `build/os.img`, `build/serial.log`, `build/qemu.log`.
+- Required shell-runtime artifacts after `make test`: `build/serial.shell.log`, `build/vga.shell.bin`, `build/vga.shell.txt`, `build/qemu.shell.log`, `build/qemu.shell.monitor.log`.
+- Required markers: `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`.
 - Marker parser uses exact whole-line matching after CRLF normalization.
+- Early QEMU exit after markers fails by default; it can indicate shutdown or triple fault.
 - `build/serial.log` and evidence records come from the current run.
+- Shell runtime must show `Available commands:` and an `echo ok` -> `ok` response in decoded VGA text.
 
 ### 6. `debug-boot-failure`
 
@@ -125,7 +128,7 @@ Mỗi skill phải có:
 2. If no marker appears, check boot sector format and COM1 init.
 3. If only `BOOT_OK` appears, check kernel load, GDT, stack, and entry jump.
 4. If `KERNEL_PANIC` appears, read panic context before changing code.
-5. If kernel grew beyond 17 sectors with phase-1 CHS loading, fix the loader profile before debugging random crashes.
+5. If kernel grew beyond the declared phase-1 loader profile, fix the loader profile before debugging random crashes.
 
 **Verification:**
 - Proposed fix must name the file and invariant it restores.
@@ -136,16 +139,19 @@ Mỗi skill phải có:
 
 **Inputs:** keyboard/input driver status, serial driver, VGA driver.
 
-**Output:** Shell loop that can emit `SHELL_READY`.
+**Output:** Shell loop that can emit `SHELL_READY` and pass a VGA-backed command test.
 
 **Instructions:**
 1. Do not make `SHELL_READY` required until shell exists.
-2. Keep shell bringup behind existing boot markers.
-3. Preserve `KERNEL_INIT_OK` regression.
+2. Emit `SHELL_READY` only after `shell_init()` has completed.
+3. Keep shell bringup behind existing boot markers.
+4. Preserve `KERNEL_INIT_OK` regression.
+5. Add runtime evidence for keyboard input, command dispatch, and VGA output; serial markers alone are not enough for shell truthfulness.
 
 **Verification:**
 - `make test` still passes required markers.
-- Optional shell test may check `SHELL_READY`.
+- `scripts/shell_test.sh` must render `help` output and `echo ok` output in decoded VGA text.
+- Do not claim timer commands, memory management, scheduler, syscall, or user mode as complete unless each has its own runtime test.
 
 ### 8. `regression-validation`
 
@@ -184,6 +190,28 @@ Mỗi skill phải có:
 **Verification:**
 - `make all` links without unresolved libc/runtime memory symbols.
 - `make test` still passes required markers.
+
+### 10. `git-change-management`
+
+**Trigger:** Use when the task involves repo state, branch/worktree planning, staging, committing, pushing, or final handoff.
+
+**Inputs:** Git repo root, `.gitignore`, changed files, validation evidence, `12-git-change-management/README.md`.
+
+**Output:** Git preflight verdict and safe staging/handoff plan.
+
+**Instructions:**
+1. Run `git status --short --branch` before editing and before handoff.
+2. Run `.agent/skills/git-change-management/scripts/git_preflight.sh`.
+3. Classify the change risk and name the validation gates required by that risk.
+4. Do not stage, commit, push, rewrite history, or clean files unless the user explicitly asks in the current turn.
+5. If staging is requested, stage explicit file paths only.
+6. Never stage deletions without explicit confirmation.
+7. Confirm generated artifacts are ignored and untracked.
+
+**Verification:**
+- Git preflight passes.
+- Handoff includes repo root, branch, status, diff summary, risk tier, and validation evidence.
+- No write Git action happened unless requested.
 
 ## Skill Authoring Rules
 

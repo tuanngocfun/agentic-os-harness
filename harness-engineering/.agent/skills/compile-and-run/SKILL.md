@@ -18,7 +18,7 @@ Use this skill when the task is to build, run, or validate the x86 teaching OS b
 - `build/boot.bin` must be exactly 512 bytes.
 - Phase-1 CHS boot must keep `KERNEL_SECTORS <= 17`; larger kernels require track-rolling CHS, LBA, or 2-stage boot.
 - Automated QEMU test must use a dedicated serial file: `-serial file:build/serial.log -monitor none -nic none`.
-- Required markers are exact lines: `BOOT_OK`, `KERNEL_INIT_OK`.
+- Required markers are exact lines: `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`.
 - Failure markers are exact lines: `BOOT_DISK_ERROR`, `KERNEL_PANIC`.
 
 ## Steps

@@ -20,6 +20,7 @@ Important: role separation is only a documented contract until platform-specific
 | `auditor` | Verify authenticity: no fake pass, no hardcoded marker cheat | No | Read-only | logs, artifacts, diffs |
 | `sentinel` | Watch long runs for stale progress and blocked loops | No | Read-only/process monitor | progress/evidence logs |
 | `doc-maintainer` | Keep docs/index/memory consistent | Yes | Search only | `llms.txt`, section READMEs |
+| `git-steward` | Inspect repo state, diff, tracked artifacts, and prepare handoff/staging plan | No by default | Read-only Git | `12-git-change-management/README.md`, `.gitignore`, changed files |
 
 ## Agent Contracts
 
@@ -45,7 +46,7 @@ Important: role separation is only a documented contract until platform-specific
 
 - Runs `make all` and `make test` when source tree exists.
 - Parses `build/serial.log` for required markers with exact whole-line matching.
-- Treats QEMU status other than `0` or timeout `124` as infrastructure failure.
+- Treats timeout `124` as the normal live-kernel pass status after marker parsing. Treats early QEMU exit `0` as failure unless the test is explicitly a shutdown test.
 - Reports exact missing artifact/marker, not generic "boot failed".
 
 ### `debugger`
@@ -86,20 +87,31 @@ Important: role separation is only a documented contract until platform-specific
 - Keeps required/optional marker language consistent.
 - Does not invent platform-specific capabilities without source.
 
+### `git-steward`
+
+- Runs read-only Git preflight: status, branch, upstream, diff summary, tracked artifact checks.
+- Prepares staging/commit/push plan only after explicit user request.
+- Cannot stage, commit, push, rewrite history, reset, path checkout, clean, or force-push without explicit user request in the current turn.
+- Flags broad staging, staged deletions, tracked build artifacts, and unknown same-file changes.
+
 ## Permission Rules
 
 - Reviewer/debugger/tester/safety roles do not edit.
 - Writer/doc-maintainer edit only assigned Markdown or source files.
+- Git-steward inspects Git state by default; Git write actions require explicit user request.
 - QEMU tests must use `build/os.img`, not `/dev/sdX`.
 - Any destructive cleanup must be explicit and narrow.
+- Stage explicit paths only; never stage deletions without confirmation.
 
 ## Concurrency Policy
 
 - One writer owns a worktree/build directory at a time.
+- One git-steward owns a staging/commit plan at a time.
 - Test runner creates a build lock before QEMU tests and releases it after marker/evidence writing.
 - QEMU test scripts write a pid file while running and record cleanup in evidence.
 - Parallel review is allowed only for read-only roles.
 - If multiple agents need implementation access, split by branch/worktree and merge through orchestrator.
+- If multiple agents edit in parallel, publish through short-lived branches/PRs or a single orchestrated merge point.
 
 ## Research-Derived Notes
 
@@ -107,3 +119,6 @@ Important: role separation is only a documented contract until platform-specific
 - Oracle-style governance says reviewer output is not enough: keep traceable evidence for actions and side effects.
 - Meta-style agent platforms favor shared tool interfaces plus role-specific skills instead of one huge agent prompt.
 - Meta DRS-style risk awareness maps naturally to this harness: bootloader/linker/marker/safety changes need stronger review and validation than glossary/index edits.
+- Google small-CL and Swift incremental-development guidance map to small, reviewable branches/commits with tests or validation evidence attached.
+- Microsoft branch policy guidance maps to protected shared branches, PR validation, reviewers, and external status checks.
+- Netflix PR-confidence guidance maps to stable test evidence and developer responsibility for deciding whether a change is safe to merge.

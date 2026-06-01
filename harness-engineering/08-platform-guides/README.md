@@ -18,6 +18,7 @@ All platforms must preserve:
 - Marker contract: required `BOOT_OK`, `KERNEL_INIT_OK`
 - Safety contract: no root QEMU, no host disk/device passthrough
 - Evidence contract: automated tests use dedicated serial file, exact marker parsing, and machine-written evidence
+- Git contract: inspect status/diff before handoff; no staging/commit/push/history/remote mutation without explicit user request
 
 ## Claude Code Mapping
 
@@ -36,6 +37,7 @@ Recommended:
 - Skills should stay small and trigger-specific.
 
 Codex agents should follow the same review posture: inspect first, edit narrowly, run verification when feasible.
+When Git is involved, Codex should run the Git preflight skill and report status/diff before any handoff or requested commit.
 
 ## Gemini / Antigravity Mapping
 
@@ -45,6 +47,7 @@ Recommended:
 - `.agent/agents/` can define orchestrator/tester/debugger roles.
 
 Do not claim a platform can build a production-grade OS from this harness. The target is a bootable teaching OS in QEMU.
+Do not claim platform role restrictions enforce Git safety until wrappers or platform-specific policies exist.
 
 ## Cross-Platform Validation
 
@@ -54,3 +57,4 @@ For each platform:
 3. Check it does not propose `boot.o` sector writes or VGA-only marker detection.
 4. Check it preserves QEMU host safety rules.
 5. Check it does not claim role restrictions are enforced unless platform role files/wrappers exist.
+6. Check it reports Git status/diff and refuses unapproved staging, deletion staging, history rewrite, and remote mutation.

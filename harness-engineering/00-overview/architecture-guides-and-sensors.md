@@ -106,6 +106,7 @@ Sensors quan sát và **validate** behavior. Chúng chạy SAU khi agent hành �
    └── Run: make all
 
 3. SENSORS validate
+   ├── Git preflight: repo root, status/diff, tracked artifact check? ✓
    ├── Compile check: exit code 0? ✓
    ├── Boot test: QEMU timeout, exact "BOOT_OK" + "KERNEL_INIT_OK" lines? ✓
    ├── Regression: boot vẫn pass sau change? ✓
@@ -119,7 +120,8 @@ Sensors quan sát và **validate** behavior. Chúng chạy SAU khi agent hành �
 Harness tốt không chỉ có guide, mà phải có evidence loop:
 
 - **Episode:** task, context loaded, files touched, commands run, outputs, side effects.
-- **Risk gates:** build artifacts -> required boot markers -> regression -> safety.
+- **Git state:** branch/status/diff and tracked-artifact verdict before handoff.
+- **Risk gates:** Git status/diff -> build artifacts -> required boot markers -> regression -> safety.
 - **Drift detection:** agent dùng `gcc`, `-m32`, `boot.o` sector write, hoặc VGA-only marker thì fail.
 
 ## Tài liệu tham khảo

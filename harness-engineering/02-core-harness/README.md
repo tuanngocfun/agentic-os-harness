@@ -47,6 +47,7 @@ Trong harness documentation này, các section mở rộng nằm ở:
 09-safety-and-security/   ← QEMU host safety
 10-implementation-checklist/
 11-reference/
+12-git-change-management/ ← Git workflow and handoff gates
 .agent/skills/            ← executable project-scoped skills
 ```
 
@@ -57,6 +58,7 @@ Trong harness documentation này, các section mở rộng nằm ở:
 | `AGENTS.md` | **Luôn luôn** | < 300 dòng | Tech stack, build commands, conventions |
 | `SKILL.md` | **On-demand** (khi intent match) | Không giới hạn | Workflow chi tiết cho task cụ thể |
 | `agent_docs/` | **Progressive** (khi cần context sâu) | Không giới hạn | Architecture, schema, known issues |
+| `12-git-change-management/` | Khi repo state matters | Ngắn, policy-focused | Branch/status/diff/staging/commit/push gates |
 
 ## Các file trong section này
 
@@ -68,8 +70,15 @@ Trong harness documentation này, các section mở rộng nằm ở:
 | `memory-files.md` | Persistent state: architecture.md, progress.md |
 | `llms-txt.md` | Index file cho agent discovery |
 
+Executable skills now include:
+- `.agent/skills/compile-and-run/`
+- `.agent/skills/regression-validation/`
+- `.agent/skills/git-change-management/`
+
 ## Nguyên tắc quan trọng nhất
 
 > **AGENTS.md < 300 dòng.** Nếu dài hơn, move content xuống `agent_docs/`.
 >
 > AGENTS.md phải ưu tiên commands và constraints thật. Claim không kiểm chứng hoặc số liệu marketing nên đi vào reference/citation audit, không đi vào core contract.
+>
+> Khi project nằm trong Git repo thật, Git status/diff là một sensor bắt buộc trước handoff. Staging/commit/push là write actions và cần explicit user request.

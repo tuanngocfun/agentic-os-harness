@@ -44,7 +44,8 @@ Require explicit human approval before:
 - Use `timeout` in automated tests.
 - Use `-no-reboot` to avoid hiding triple faults in reboot loops.
 - Write COM1 serial logs to `build/serial.log` and QEMU diagnostics to `build/qemu.log`.
-- Treat QEMU exit status `0` and timeout status `124` as acceptable only after marker parsing succeeds; fail other statuses immediately.
+- Treat timeout status `124` as the normal acceptable status for boot/shell liveness after marker parsing succeeds.
+- Treat early QEMU exit status `0` as failure by default; it can indicate shutdown or a triple fault after markers. Allow it only for an explicit shutdown test.
 - Treat `KERNEL_PANIC` and `BOOT_DISK_ERROR` as hard failures.
 
 ## Security Review Checklist

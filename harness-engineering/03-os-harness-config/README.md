@@ -32,8 +32,8 @@ QEMU chạy như **userspace process** trên Ubuntu host:
 | `os-boot-sequence.md` | Chi tiết boot chain: BIOS → boot sector → protected mode → kernel |
 | `build-commands.md` | Cross-compile, link, image creation, QEMU run |
 | `qemu-test-loop.md` | Automated boot test với serial capture |
-| `boot-markers.md` | Protocol boot markers: required `BOOT_OK`, `KERNEL_INIT_OK`; optional `SHELL_READY`, `TESTS_PASS` |
+| `boot-markers.md` | Protocol boot markers: core required `BOOT_OK`, `KERNEL_INIT_OK`; current shell phase also requires `SHELL_READY`; optional `TESTS_PASS` |
 
 ## Mục tiêu cuối cùng
 
-> Agent đọc AGENTS.md -> dùng skills -> build `boot.bin`, `boot_config.inc`, `kernel.elf`, `kernel.bin`, `os.img` -> QEMU boot test dùng dedicated serial file -> parse exact required marker lines (`BOOT_OK`, `KERNEL_INIT_OK`) -> PASS
+> Agent đọc AGENTS.md -> dùng skills -> build `boot.bin`, `boot_config.inc`, `kernel.elf`, `kernel.bin`, `os.img` -> QEMU boot test dùng dedicated serial file -> parse exact required marker lines (`BOOT_OK`, `KERNEL_INIT_OK`, and current-phase `SHELL_READY`) -> shell-runtime test proves `help` + `echo ok` -> PASS

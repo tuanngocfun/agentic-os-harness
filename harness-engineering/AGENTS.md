@@ -23,6 +23,7 @@ Harness engineering documentation for building an x86 bare metal operating syste
 09-safety-and-security/   ← QEMU and host safety rules
 10-implementation-checklist/ ← Phase checklist for buildout
 11-reference/             ← Anti-patterns, glossary, source map
+12-git-change-management/ ← Git workflow, branch, diff, staging, and handoff gates
 llms.txt                  ← Root discovery index for agents
 .agent/skills/            ← Executable project-scoped skills
 ```
@@ -52,6 +53,7 @@ llms.txt                  ← Root discovery index for agents
 11. `06-validation/README.md` — Regression and drift gates
 12. `09-safety-and-security/README.md` — Host/QEMU safety rules
 13. `10-implementation-checklist/README.md` — Implementation checklist
+14. `12-git-change-management/README.md` — Git workflow and handoff gates
 
 ## Key Concepts
 
@@ -59,16 +61,17 @@ llms.txt                  ← Root discovery index for agents
 - **AGENTS.md** — Universal guide read by all AI coding agents (< 300 lines)
 - **SKILL.md** — On-demand capability, loaded only when intent matches
 - **Sub-agents** — Role-separated contracts; explicit tool restrictions require platform materialization before enforcement claims
-- **Boot markers** — Required: `BOOT_OK`, `KERNEL_INIT_OK`; optional: `SHELL_READY`, `TESTS_PASS`
+- **Boot markers** — Core required: `BOOT_OK`, `KERNEL_INIT_OK`; current shell phase also requires `SHELL_READY`; optional: `TESTS_PASS`
 - **QEMU safety** — Runs as unprivileged userspace process; safe when no host disks/devices are passed through
 - **Artifact contract** — `boot.bin` flat boot sector, `boot_config.inc` generated sector count, `kernel.elf` link artifact, `kernel.bin` raw boot artifact, `os.img` boot image, `serial.log`/`qemu.log` test evidence
 - **Evidence contract** — Automated test uses dedicated serial file, exact marker parser, QEMU status capture, and machine-written evidence
+- **Git contract** — Inspect status/diff before handoff; stage only explicit paths after approval; never stage deletions or mutate history without explicit user request
 
 ## Engineering Rubric
 
-- Success criteria must be measurable: build artifacts exist, commands exit correctly, and required serial markers appear.
+- Success criteria must be measurable: build artifacts exist, commands exit correctly, required serial markers appear, and current runtime gates prove claimed features.
 - Every autonomous run should leave evidence: prompt, files touched, tool calls, memory updates, guardrails, eval verdicts, and side effects.
-- Changes pass risk gates in order: build correctness, boot markers, regression checks, and safety constraints.
+- Changes pass risk gates in order: Git status/diff, build correctness, boot markers, regression checks, and safety constraints.
 
 ## Sources
 
@@ -78,6 +81,7 @@ llms.txt                  ← Root discovery index for agents
 - QEMU safety clarification (ideas/clarify-from-gpt55.md)
 - Stack model clarification (ideas/clarify-from-gemini35flash.md)
 - External engineering rubric: Google evals/sandboxing, Oracle observability/governance, Meta standardized agent tooling/regression gates/DRS-style risk gates
+- Git/change rubric: Google small CLs/code review, Meta DRS risk gates, Microsoft branch policies/build validation, Swift incremental development, Netflix PR confidence, Tesla public PR template/contribution workflow
 
 ## Status
 
@@ -90,3 +94,4 @@ llms.txt                  ← Root discovery index for agents
 - [x] Phase 7: Safety (09-safety-and-security/) — QEMU and host safety rules
 - [x] Phase 8: Checklists (10-implementation-checklist/) — Deployment checklist
 - [x] Phase 9: Reference (11-reference/) — Anti-patterns, glossary, source map
+- [x] Phase 10: Git change management (12-git-change-management/) — Repo state, branch, diff, staging, and handoff gates

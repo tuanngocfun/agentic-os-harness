@@ -7,6 +7,8 @@
 - [ ] Read `03-os-harness-config/build-commands.md`.
 - [ ] Read `03-os-harness-config/boot-markers.md`.
 - [ ] Read `06-validation/README.md`.
+- [ ] Read `12-git-change-management/README.md` if this harness is inside a Git repo.
+- [ ] Run `.agent/skills/git-change-management/scripts/git_preflight.sh` before editing tracked files.
 
 ## Phase 1 — Build Core
 
@@ -22,7 +24,7 @@
 - [ ] Use `-Iinclude -MMD -MP` for kernel C objects.
 - [ ] Guard `BUILD_DIR` and `OS_IMG` before `dd` or `clean`.
 - [ ] Initialize real-mode `DS`, `ES`, `SS`, and `SP` before bootloader memory access.
-- [ ] Enforce phase-1 CHS `KERNEL_SECTORS <= 17`, or implement track-rolling CHS/LBA/2-stage loading.
+- [ ] Enforce the declared phase-1 CHS profile (`KERNEL_SECTORS <= 120` for current track-rolling CHS), or implement LBA/2-stage loading.
 
 ## Phase 2 — Verify Boot
 
@@ -30,7 +32,7 @@
 - [ ] `build/boot.bin` is exactly 512 bytes.
 - [ ] `build/boot_config.inc` matches `kernel.bin` size.
 - [ ] `make test` uses `-serial file:build/serial.log -monitor none -nic none`.
-- [ ] QEMU status is captured and non-`0`/non-`124` statuses fail immediately.
+- [ ] QEMU status is captured; timeout `124` is the normal liveness pass, and early exit `0` fails unless this is an explicit shutdown test.
 - [ ] Marker parser uses exact whole-line matching after CRLF normalization.
 - [ ] `make test` finds `BOOT_OK`.
 - [ ] `make test` finds `KERNEL_INIT_OK`.
@@ -44,10 +46,13 @@
 - [ ] Add IDT without breaking `KERNEL_INIT_OK`.
 - [ ] Add shell only after boot marker regression passes.
 - [ ] Make `SHELL_READY` required only after shell exists.
+- [ ] Add shell-runtime validation before claiming the shell works.
+- [ ] Keep process/scheduler/syscall/user-mode status as scaffold until runtime tests prove execution.
 
 ## Phase 4 — Regression
 
 - [ ] Run drift searches from `06-validation/README.md`.
+- [ ] Run `make test` and confirm both boot-marker and shell-runtime phases pass.
 - [ ] Confirm no hardcoded stale `KERNEL_SECTORS`.
 - [ ] Confirm risk classification matches changed files.
 - [ ] Confirm machine evidence includes run id, timestamps, command status, artifact sizes/hashes, serial hash, marker verdict, and safety verdict.
@@ -55,8 +60,17 @@
 - [ ] Update `llms.txt` if docs or skills moved.
 - [ ] Review QEMU safety commands.
 - [ ] Confirm multi-agent concurrency rules: one writer owner per worktree, build lock, QEMU pid cleanup.
+- [ ] Confirm Git preflight passes: status reported, diff summary captured, generated artifacts ignored/untracked, no unapproved staged deletions.
 
-## Phase 5 — Handoff
+## Phase 5 — Git Handoff
+
+- [ ] Report repo root, branch, upstream, and status.
+- [ ] Report diff summary and changed files.
+- [ ] Confirm no broad staging or unrequested Git write action happened.
+- [ ] Include risk tier and rollback note.
+- [ ] If user requested commit/push, show status and diff summary before staging explicit paths.
+
+## Phase 6 — Handoff
 
 - [ ] Summarize changed contracts.
 - [ ] Include command evidence.

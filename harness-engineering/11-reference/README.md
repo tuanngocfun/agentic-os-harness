@@ -18,6 +18,11 @@
 | Use `-serial mon:stdio` as automated evidence | Monitor and COM1 share one stream | Use `-serial file:build/serial.log -monitor none` for tests |
 | Let Makefile variables redirect `dd` or `clean` | Overrides can target unsafe paths | Guard `BUILD_DIR` and `OS_IMG` before write/delete commands |
 | Force too much logic into sector 0 | Boot sector exceeds 512 bytes | Split into a 2-stage bootloader |
+| Claim a feature works because files exist or boot markers pass | Scaffolding can be linked but never executed | Add runtime gates and artifacts for each behavior |
+| Broad Git staging | Can include unrelated/user changes | Stage explicit paths only after status and diff review |
+| Stage generated build artifacts | Makes repo stale and hard to review | Keep `build/` and binary outputs ignored/untracked |
+| Mutate Git history or remote state casually | Can destroy collaboration state | Require explicit user request and current status/diff evidence |
+| Claim CI/branch protection without checking | False confidence | Inspect platform settings or mark them unknown |
 
 ## Glossary
 
@@ -31,6 +36,9 @@
 | Flat binary | Raw executable bytes without ELF headers |
 | ELF | Link/debug artifact with headers and sections |
 | COM1 | Serial port at `0x3F8`; capture to dedicated file for automated tests, or `mon:stdio` for human debug |
+| Diff stat | Concise summary of changed files and line counts |
+| Staged paths | Files currently prepared for commit |
+| Short-lived branch | Temporary branch used to isolate one reviewable change |
 
 ## Source Map
 
@@ -53,6 +61,16 @@ Engineering sources:
 - [Meta Diff Risk Score](https://engineering.fb.com/2025/08/06/developer-tools/diff-risk-score-drs-ai-risk-aware-software-development-meta/): risk-aware change gates and mitigation workflows.
 - [Birgitta Böckeler on martinfowler.com](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html): guides/sensors framing for coding-agent harnesses.
 
+Git/change-management sources:
+- [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html): small, self-contained changes with related tests and build health.
+- [Google Engineering Practices: Code Review Standard](https://google.github.io/eng-practices/review/reviewer/standard.html): improve code health using data, style consistency, and continuous improvement rather than perfectionism.
+- [Microsoft Azure Repos branch policies](https://learn.microsoft.com/en-us/azure/devops/repos/git/branch-policies?view=azure-devops): protected branches, PR requirements, reviewers, build validation, and status checks.
+- [Microsoft Azure Pipelines PR triggers](https://learn.microsoft.com/en-us/azure/devops/pipelines/repos/azure-repos-git?view=azure-devops): PR validation through branch policy and build validation.
+- [Swift.org contributing](https://www.swift.org/contributing/): incremental development, PR/release branch approvals, authorship and code-owner review boundaries.
+- [Netflix TechBlog: Improving Pull Request Confidence](https://netflixtechblog.medium.com/improving-pull-request-confidence-for-the-netflix-tv-app-b85edb05eb65): PR confidence through test evidence, stability pipelines, and explicit merge safety judgement.
+- [Tesla Fleet Telemetry contributing](https://github.com/teslamotors/fleet-telemetry/blob/main/CONTRIBUTING.md): public open-source issue/branch/PR review workflow.
+- [Tesla Fleet Telemetry PR template](https://github.com/teslamotors/fleet-telemetry/blob/main/PULL_REQUEST_TEMPLATE.md): summary, change type, self-review, docs, unit test, and integration test checklist.
+
 ## Public Contract Summary
 
 Artifacts:
@@ -63,15 +81,24 @@ Artifacts:
 - `build/os.img`
 - `build/serial.log`
 - `build/qemu.log`
+- `build/serial.shell.log`
+- `build/vga.shell.txt`
 
 Commands:
 - `make all`
 - `make run`
 - `make run-serial`
 - `make test`
+- `make test-boot`
+- `make test-shell`
 - `make clean`
+- `.agent/skills/git-change-management/scripts/git_preflight.sh`
 
 Markers:
-- Required: `BOOT_OK`, `KERNEL_INIT_OK`
-- Optional: `SHELL_READY`, `TESTS_PASS`
+- Required in the current shell phase: `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
+- Optional: `TESTS_PASS`
 - Failure: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
+
+Runtime evidence:
+- Shell: `scripts/shell_test.sh` must prove keyboard input, command dispatch, and VGA output for `help` and `echo ok`.
+- Process/scheduler/syscall/user mode: scaffold only until dedicated runtime tests exist.

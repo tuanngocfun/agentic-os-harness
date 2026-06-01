@@ -55,9 +55,10 @@ make clean            # Xóa build artifacts
 
 ## Testing Instructions
 - Xem chi tiết: agent_docs/running_tests.md
-- Boot test: `make test` → exit code 0 = pass
-- Required serial output markers: exact lines `BOOT_OK`, `KERNEL_INIT_OK`
-- Optional serial output markers: SHELL_READY, TESTS_PASS
+- Boot test: `make test` -> exit code 0 = pass
+- Core required serial output markers: exact lines `BOOT_OK`, `KERNEL_INIT_OK`
+- Current shell phase also requires `SHELL_READY` and a shell-runtime test when the shell is implemented.
+- Optional serial output markers: TESTS_PASS
 
 ## Things to Avoid
 - KHÔNG dùng `gcc` thường — dùng `i686-elf-gcc` thay thế

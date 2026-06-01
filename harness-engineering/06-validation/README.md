@@ -2,7 +2,24 @@
 
 ## Mục tiêu
 
-Validation biến harness từ docs thành feedback loop. Một run chỉ pass khi build artifacts đúng, serial markers đúng, regression không bị phá, và QEMU safety được giữ.
+Validation biến harness từ docs thành feedback loop. Một run chỉ pass khi Git state rõ ràng, build artifacts đúng, serial markers đúng, regression không bị phá, và QEMU safety được giữ.
+
+## Git Preflight
+
+Run this before editing tracked files and before final handoff:
+
+```bash
+.agent/skills/git-change-management/scripts/git_preflight.sh
+```
+
+Pass condition:
+1. Repo root resolves correctly.
+2. `git status --short --branch` is reported.
+3. Diff summary is reported.
+4. No generated build artifact is tracked.
+5. `.gitignore` protects `build/` and build outputs.
+6. No staged deletion exists unless explicitly confirmed by the user.
+7. No stage/commit/push occurred unless explicitly requested.
 
 ## Boot-Test Protocol
 
@@ -14,13 +31,19 @@ Required artifacts:
 - `build/os.img`
 - `build/serial.log` after test
 - `build/qemu.log` after test
+- `build/serial.shell.log` after shell-runtime test
+- `build/vga.shell.txt` after shell-runtime test
 
 Required markers:
 - `BOOT_OK`
 - `KERNEL_INIT_OK`
 
-Optional markers:
+Shell-phase marker:
 - `SHELL_READY`
+
+`SHELL_READY` is optional before a shell exists. Once `shell_init()`/`shell_run()` are implemented and the project `AGENTS.md` promotes shell bringup, `make test` must require `SHELL_READY`.
+
+Optional markers:
 - `TESTS_PASS`
 
 Failure markers:
@@ -30,12 +53,24 @@ Failure markers:
 Pass condition:
 1. `make all` exits 0.
 2. `make test` exits 0.
-3. `build/serial.log` contains both required markers.
+3. `build/serial.log` contains all required markers for the current phase.
 4. `build/serial.log` does not contain failure markers.
 5. `build/boot.bin` is exactly 512 bytes.
 6. `build/boot_config.inc` sector count matches `ceil(size(build/kernel.bin) / 512)`.
-7. For the phase-1 CHS loader, generated sector count is `<= 17`.
+7. For the phase-1 track-rolling CHS loader, generated sector count is `<= 120`.
 8. `build/serial.log` was created/truncated by the current run, not reused from a stale pass.
+9. For live kernel/shell tests, QEMU reaches timeout `124`; early exit `0` fails unless this is an explicit shutdown test.
+10. Shell-runtime test decodes VGA text and finds the visible shell banner, `Available commands:`, `> echo ok`, and an exact `ok` output line.
+
+## Shell-Runtime Protocol
+
+Current project phase:
+- `make test` runs `scripts/boot_test.sh`, then `scripts/shell_test.sh`.
+- `scripts/shell_test.sh` starts QEMU with a stdio monitor, sends keyboard events, dumps VGA text memory, and parses `build/vga.shell.txt`.
+- This proves keyboard IRQ input, shell dispatch, and VGA text output for `help` and `echo ok`.
+- It does not prove timer accuracy, memory allocation, scheduler context switching, syscall dispatch from user space, or ring-3 isolation.
+
+Do not promote a subsystem from "scaffold" to "working" until it has a targeted runtime gate and evidence artifact.
 
 ## Marker Parser
 
@@ -90,7 +125,7 @@ If a match appears, fix the stale snippet before continuing.
 - Makefile snippets must use `wc -c` for portable byte counts.
 - Makefile snippets must guard `BUILD_DIR` and `OS_IMG` before `dd` or `clean`.
 - Makefile snippets must validate `boot.bin` is exactly 512 bytes.
-- Phase-1 CHS snippets must reject `KERNEL_SECTORS > 17`, or must implement track-rolling CHS/LBA/2-stage loading.
+- Phase-1 CHS snippets must reject counts beyond their declared loader profile: `> 17` for single-track loading, `> 120` for the current track-rolling profile, or must implement LBA/2-stage loading.
 - Boot sector snippets must use `nasm -f bin`.
 - Boot sector snippets must initialize `DS`, `ES`, `SS`, and `SP` before memory/string/disk access.
 - Kernel flow must name both `kernel.elf` and `kernel.bin`.
@@ -128,11 +163,13 @@ KERNEL_PANIC
 Before moving to a new OS feature:
 - Previous required marker still appears.
 - Optional marker not promoted to required until feature exists.
+- Current shell phase keeps `SHELL_READY` required and also runs shell-runtime validation.
 - New docs link back to artifact contract.
 - New safety guidance does not weaken host disk/device restrictions.
 - New skill has verification steps and failure behavior.
 - Parser changes include negative fixtures.
 - Evidence files are machine-written; prose summaries cannot be the only proof.
+- Git state is reported: branch, status, diff summary, tracked-artifact verdict, and staged-deletion verdict.
 
 ## Risk-Targeted Checks
 
@@ -140,8 +177,9 @@ Borrowing the DRS-style idea of treating change risk as a gate, classify changes
 
 | Risk area | Examples | Required evidence |
 |---|---|---|
-| High | bootloader, linker script, GDT, sector count, QEMU safety, marker parser | `make all`, `make test`, drift checks, artifact/marker evidence |
+| High | bootloader, linker script, GDT, sector count, QEMU safety, marker parser, Git staging/commit/push policy | `make all`, `make test`, drift checks, artifact/marker evidence, Git preflight |
 | Medium | serial driver, shell readiness, memory/state templates | Targeted test plus marker contract review |
+| Medium/High | process, scheduler, syscall, paging, user mode | Dedicated runtime tests proving behavior, not only file presence or boot survival |
 | Low | glossary wording, index links, non-contract examples | Link/path check and no stale-pattern hits |
 
 High-risk changes cannot pass on prose review alone.
@@ -151,6 +189,7 @@ High-risk changes cannot pass on prose review alone.
 Each autonomous run should capture:
 - Prompt/task.
 - Files touched.
+- Git branch/status/diff summary.
 - Commands and exit status.
 - Build artifact list.
 - Artifact sizes and hashes.
