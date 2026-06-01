@@ -1,0 +1,30 @@
+# Harness Engineering Documentation Index
+
+## Core Contracts
+- [AGENTS.md](./AGENTS.md) — Always-on project contract, reading order, marker/artifact rules.
+- [Overview](./00-overview/README.md) — Project scope, engineering rubric, source authority.
+- [Project Setup](./01-project-setup/README.md) — Host/toolchain preflight, bootstrap and discovery gates.
+- [Build Commands](./03-os-harness-config/build-commands.md) — Canonical Makefile, artifact contract, linker script.
+- [Boot Markers](./03-os-harness-config/boot-markers.md) — COM1 marker protocol and exact parser rules.
+- [Validation](./06-validation/README.md) — Boot-test protocol, drift checks, negative parser fixtures.
+- [Safety](./09-safety-and-security/README.md) — QEMU host safety and evidence isolation.
+- [Implementation Checklist](./10-implementation-checklist/README.md) — Pre-implementation gate checklist.
+- [Reference](./11-reference/README.md) — Anti-patterns, glossary, source map.
+
+## Executable Skills
+- [compile-and-run](./.agent/skills/compile-and-run/SKILL.md) — Build OS image and run QEMU boot marker test.
+- [regression-validation](./.agent/skills/regression-validation/SKILL.md) — Run harness contract drift and materialization checks.
+
+## Human Skill Index
+- [OS Skills](./04-skills/README.md) — Bootloader, GDT, kernel entry, serial, runtime primitives, regression validation.
+- [Sub-Agents](./05-sub-agents/README.md) — Role contracts, permissions, concurrency policy.
+- [Memory And State](./07-memory-and-state/README.md) — Progress, decisions, machine evidence templates.
+- [Platform Guides](./08-platform-guides/README.md) — Claude/Codex/Gemini mapping without unsupported platform claims.
+
+## External Source Authority
+- [QEMU System Emulation](https://www.qemu.org/docs/master/system/)
+- [NASM Documentation](https://www.nasm.us/doc/)
+- [GNU Binutils objcopy](https://sourceware.org/binutils/docs/binutils/objcopy.html)
+- [OSDev Wiki](https://wiki.osdev.org)
+- [Intel SDM](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
+- [Birgitta Böckeler - Harness Engineering](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html)
