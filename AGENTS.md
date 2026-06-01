@@ -2,7 +2,7 @@
 
 ## Project Overview
 x86 bare metal teaching operating system written in C and x86 assembly (NASM syntax).
-Runs on QEMU i386 emulator. Goal: boot successfully, initialize kernel, then grow toward a basic shell.
+Runs on QEMU i386 emulator. Has a QEMU-validated interactive shell for `help` and `echo`; process, scheduler, syscall, and user-mode files are present but must not be claimed complete until they have runtime evidence.
 
 ## Tech Stack
 - Cross-compiler: i686-elf-gcc 13.2.0 (C, freestanding, no libc)
@@ -19,17 +19,27 @@ Runs on QEMU i386 emulator. Goal: boot successfully, initialize kernel, then gro
 │   └── boot.asm          # Flat boot sector, 512 bytes, 0xAA55 signature
 ├── kernel/
 │   ├── entry.asm          # ELF32 kernel entry point
+│   ├── isr.asm            # ISR stubs (keyboard IRQ1)
 │   ├── kernel.c           # kernel_main()
-│   ├── string.c           # freestanding memcpy/memset/memmove/memcmp
+│   ├── idt.c              # Interrupt Descriptor Table + PIC remap
+│   ├── keyboard.c         # PS/2 keyboard driver
+│   ├── shell.c            # Basic command shell
+│   ├── string.c           # freestanding memcpy/memset/memmove/memcmp/strcmp
 │   ├── vga.c              # VGA text mode driver
 │   └── serial.c           # COM1 serial driver for automated testing
 ├── include/
 │   ├── kernel.h
+│   ├── idt.h
+│   ├── timer.h
+│   ├── memory.h
+│   ├── keyboard.h
+│   ├── shell.h
 │   ├── serial.h
 │   ├── string.h
 │   └── vga.h
 ├── scripts/
-│   └── boot_test.sh       # Automated QEMU boot test
+│   ├── boot_test.sh       # Automated QEMU boot marker test with evidence logging
+│   └── shell_test.sh      # QEMU monitor + VGA text validation for shell commands
 ├── linker.ld              # Kernel linked at 0x1000
 ├── Makefile
 └── AGENTS.md
@@ -46,19 +56,21 @@ sudo apt-get install nasm qemu-system-x86 make
 make all
 make run
 make run-serial
-make test
+make test       # boot marker test + shell runtime test
 make clean
 ```
 
 ## Architecture Notes
 - Build artifacts: `build/boot.bin`, `build/boot_config.inc`, `build/kernel.elf`, `build/kernel.bin`, `build/os.img`
 - Boot sequence: BIOS -> `boot.bin` at 0x7C00 -> load raw `kernel.bin` at 0x1000 -> protected mode -> kernel entry
-- Phase-1 loader uses one CHS read and therefore requires `KERNEL_SECTORS <= 17`
+- Phase-1 loader uses track-rolling CHS and currently requires `KERNEL_SECTORS <= 120`
 - Kernel entry: `entry.asm` puts `_start` in `.entry`, sets stack, and calls `kernel_main()`
-- Automated tests read COM1 serial output via QEMU `-serial file:build/serial.log -monitor none`
-- Required markers: `BOOT_OK`, `KERNEL_INIT_OK`
-- Optional markers: `SHELL_READY`, `TESTS_PASS`
+- Boot-marker tests read COM1 serial output via QEMU `-serial file:build/serial.log -monitor none`
+- Shell-runtime tests use QEMU monitor `sendkey`, dump VGA text memory, and require visible `help` plus `echo ok` output.
+- Required markers: `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
+- Optional markers: `TESTS_PASS`
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
+- Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and basic command rendering. It does not prove preemptive scheduling, user-mode transition, page-fault handling, or real process isolation.
 
 ## Memory Map
 | Address | Content |
@@ -79,7 +91,7 @@ make clean
 - KHÔNG assemble boot sector bằng `nasm -f elf32` để ghi vào disk image
 - KHÔNG link `boot.bin` hoặc bootloader object vào kernel
 - KHÔNG hardcode stale `KERNEL_SECTORS`; generate or validate it from `kernel.bin`
-- KHÔNG let phase-1 CHS single-read loader exceed 17 kernel sectors
+- KHÔNG let phase-1 track-rolling CHS loader exceed 120 kernel sectors
 - KHÔNG dùng `-serial mon:stdio` as automated evidence channel
 - KHÔNG chạy QEMU bằng root
 - KHÔNG passthrough host disks/devices vào QEMU boot tests

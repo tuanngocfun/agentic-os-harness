@@ -15,16 +15,29 @@ CFLAGS = -ffreestanding -fno-builtin -fno-stack-protector \
          -fno-pic -fno-pie -Wall -Wextra -Iinclude -MMD -MP -c
 LDFLAGS = -T linker.ld -ffreestanding -nostdlib -Wl,--build-id=none
 LIBS = -lgcc
-KERNEL_MAX_CHS_SECTORS = 17
+KERNEL_MAX_CHS_SECTORS = 120
 
 BOOT_BIN = $(BUILD_DIR)/boot.bin
 BOOT_CONFIG = $(BUILD_DIR)/boot_config.inc
 KERNEL_ENTRY_OBJ = $(BUILD_DIR)/entry.o
+ISR_OBJ = $(BUILD_DIR)/isr.o
 KERNEL_OBJ = $(BUILD_DIR)/kernel.o
 VGA_OBJ = $(BUILD_DIR)/vga.o
 SERIAL_OBJ = $(BUILD_DIR)/serial.o
 STRING_OBJ = $(BUILD_DIR)/string.o
-KERNEL_OBJECTS = $(KERNEL_ENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) $(STRING_OBJ)
+IDT_OBJ = $(BUILD_DIR)/idt.o
+KEYBOARD_OBJ = $(BUILD_DIR)/keyboard.o
+TIMER_OBJ = $(BUILD_DIR)/timer.o
+MEMORY_OBJ = $(BUILD_DIR)/memory.o
+SHELL_OBJ = $(BUILD_DIR)/shell.o
+GDT_OBJ = $(BUILD_DIR)/gdt.o
+PAGING_OBJ = $(BUILD_DIR)/paging.o
+TSS_OBJ = $(BUILD_DIR)/tss.o
+SYSCALL_OBJ = $(BUILD_DIR)/syscall.o
+PROCESS_OBJ = $(BUILD_DIR)/process.o
+SCHEDULER_OBJ = $(BUILD_DIR)/scheduler.o
+USERMODE_OBJ = $(BUILD_DIR)/usermode.o
+KERNEL_OBJECTS = $(KERNEL_ENTRY_OBJ) $(ISR_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) $(STRING_OBJ) $(IDT_OBJ) $(KEYBOARD_OBJ) $(TIMER_OBJ) $(MEMORY_OBJ) $(GDT_OBJ) $(PAGING_OBJ) $(TSS_OBJ) $(SYSCALL_OBJ) $(PROCESS_OBJ) $(SCHEDULER_OBJ) $(USERMODE_OBJ) $(SHELL_OBJ)
 KERNEL_ELF = $(BUILD_DIR)/kernel.elf
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 OS_IMG = $(BUILD_DIR)/os.img
@@ -36,14 +49,14 @@ guard-paths:
 	@test "$(OS_IMG)" = "build/os.img" || { echo "ERROR: OS_IMG must be build/os.img"; exit 1; }
 	@test -n "$(BUILD_DIR)" || { echo "ERROR: BUILD_DIR is empty"; exit 1; }
 	@test -n "$(OS_IMG)" || { echo "ERROR: OS_IMG is empty"; exit 1; }
-	@test "$(KERNEL_MAX_CHS_SECTORS)" = "17" || { echo "ERROR: KERNEL_MAX_CHS_SECTORS must be 17"; exit 1; }
+	@test "$(KERNEL_MAX_CHS_SECTORS)" = "120" || { echo "ERROR: KERNEL_MAX_CHS_SECTORS must be 120"; exit 1; }
 
 $(BOOT_CONFIG): guard-paths $(KERNEL_BIN)
 	@mkdir -p $(BUILD_DIR)
 	@sectors=$$((($$(wc -c < $(KERNEL_BIN)) + 511) / 512)); \
 	if [ "$$sectors" -lt 1 ]; then sectors=1; fi; \
 	if [ "$$sectors" -gt "$(KERNEL_MAX_CHS_SECTORS)" ]; then \
-		echo "ERROR: kernel.bin requires $$sectors sectors; CHS single-read supports max $(KERNEL_MAX_CHS_SECTORS)"; \
+		echo "ERROR: kernel.bin requires $$sectors sectors; CHS track-rolling loader supports max $(KERNEL_MAX_CHS_SECTORS)"; \
 		exit 1; \
 	fi; \
 	printf 'KERNEL_SECTORS equ %s\n' "$$sectors" > $@
@@ -61,6 +74,10 @@ $(KERNEL_ENTRY_OBJ): $(KERNEL_DIR)/entry.asm
 	@mkdir -p $(BUILD_DIR)
 	$(NASM) -f elf32 $< -o $@
 
+$(ISR_OBJ): $(KERNEL_DIR)/isr.asm
+	@mkdir -p $(BUILD_DIR)
+	$(NASM) -f elf32 $< -o $@
+
 $(KERNEL_OBJ): $(KERNEL_DIR)/kernel.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
@@ -74,6 +91,54 @@ $(SERIAL_OBJ): $(KERNEL_DIR)/serial.c
 	$(CC) $(CFLAGS) $< -o $@
 
 $(STRING_OBJ): $(KERNEL_DIR)/string.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(IDT_OBJ): $(KERNEL_DIR)/idt.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(KEYBOARD_OBJ): $(KERNEL_DIR)/keyboard.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(TIMER_OBJ): $(KERNEL_DIR)/timer.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(MEMORY_OBJ): $(KERNEL_DIR)/memory.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(GDT_OBJ): $(KERNEL_DIR)/gdt.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(PAGING_OBJ): $(KERNEL_DIR)/paging.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(TSS_OBJ): $(KERNEL_DIR)/tss.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(SYSCALL_OBJ): $(KERNEL_DIR)/syscall.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(PROCESS_OBJ): $(KERNEL_DIR)/process.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(SCHEDULER_OBJ): $(KERNEL_DIR)/scheduler.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(USERMODE_OBJ): $(KERNEL_DIR)/usermode.asm
+	@mkdir -p $(BUILD_DIR)
+	$(NASM) -f elf32 $< -o $@
+
+$(SHELL_OBJ): $(KERNEL_DIR)/shell.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
@@ -94,12 +159,17 @@ run: $(OS_IMG)
 run-serial: $(OS_IMG)
 	$(QEMU) -drive file=$<,format=raw -m 512M -serial mon:stdio -display none -no-reboot
 
-test: $(OS_IMG)
+test: test-boot test-shell
+
+test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
+
+test-shell: $(OS_IMG)
+	@bash scripts/shell_test.sh
 
 clean: guard-paths
 	rm -rf $(BUILD_DIR)
 
 -include $(BUILD_DIR)/*.d
 
-.PHONY: all guard-paths run run-serial test clean
+.PHONY: all guard-paths run run-serial test test-boot test-shell clean

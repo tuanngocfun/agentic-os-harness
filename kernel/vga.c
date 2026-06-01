@@ -59,6 +59,16 @@ void vga_putc(char c) {
         return;
     }
 
+    if (c == '\b') {
+        if (vga_col > 0) {
+            vga_col--;
+        } else if (vga_row > 0) {
+            vga_row--;
+            vga_col = VGA_WIDTH - 1;
+        }
+        return;
+    }
+
     VGA_BUFFER[vga_row * VGA_WIDTH + vga_col] = vga_entry(c, vga_attr);
     vga_col++;
     if (vga_col >= VGA_WIDTH) {
