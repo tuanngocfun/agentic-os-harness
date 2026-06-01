@@ -6,8 +6,8 @@ COM1 equ 0x3F8
 
 %include "boot_config.inc"
 
-%if KERNEL_SECTORS > 17
-%error "CHS single-read loader supports at most 17 kernel sectors"
+%if KERNEL_SECTORS > 120
+%error "CHS track-rolling loader supports at most 120 kernel sectors"
 %endif
 
 start:
@@ -82,15 +82,48 @@ enable_a20:
     ret
 
 load_kernel:
-    mov bx, KERNEL_OFFSET
+    mov si, KERNEL_OFFSET
+    mov cx, KERNEL_SECTORS
+    mov byte [CUR_CYLINDER], 0
+    mov byte [CUR_HEAD], 0
+    mov byte [CUR_SECTOR], 2
+
+.loop:
+    test cx, cx
+    jz .done
+
+    push cx
+    push si
+
     mov ah, 0x02
-    mov al, KERNEL_SECTORS
-    mov ch, 0
-    mov cl, 2
-    mov dh, 0
+    mov al, 1
+    mov ch, [CUR_CYLINDER]
+    mov cl, [CUR_SECTOR]
+    mov dh, [CUR_HEAD]
     mov dl, [BOOT_DRIVE]
+    mov bx, si
     int 0x13
     jc disk_error
+
+    pop si
+    pop cx
+
+    add si, 512
+    inc byte [CUR_SECTOR]
+    cmp byte [CUR_SECTOR], 18
+    jbe .next
+    mov byte [CUR_SECTOR], 1
+    inc byte [CUR_HEAD]
+    cmp byte [CUR_HEAD], 1
+    jbe .next
+    mov byte [CUR_HEAD], 0
+    inc byte [CUR_CYLINDER]
+
+.next:
+    dec cx
+    jmp .loop
+
+.done:
     ret
 
 disk_error:
@@ -148,6 +181,9 @@ serial_puts_32:
     ret
 
 BOOT_DRIVE: db 0
+CUR_CYLINDER: db 0
+CUR_HEAD: db 0
+CUR_SECTOR: db 2
 MSG_BOOT_OK: db 'BOOT_OK', 0x0A, 0
 MSG_BOOT_DISK_ERROR: db 'BOOT_DISK_ERROR', 0x0A, 0
 
