@@ -69,6 +69,7 @@ llms.txt                  ← Root discovery index for agents
 - **QEMU safety** — Runs as unprivileged userspace process; safe when no host disks/devices are passed through
 - **Artifact contract** — `boot.bin` flat boot sector, `boot_config.inc` generated sector count, `kernel.elf` link artifact, `kernel.bin` raw boot artifact, `os.img` boot image, `serial.log`/`qemu.log` test evidence
 - **Evidence contract** — Automated test uses dedicated serial file, exact marker parser, QEMU status capture, and machine-written evidence
+- **Build-config contract** — `KERNEL_DEFINES` must be tracked through `build/kernel_defines.stamp`; after a selftest build, plain `make all` must rebuild default kernel objects before `make test`.
 - **Git contract** — Inspect status/diff before handoff; stage only explicit paths after approval; never stage deletions or mutate history without explicit user request
 - **Claim contract** — A subsystem is not "working" until `harness_profile.yaml` marks it claimable and a targeted runtime gate proves it.
 - **Format contract** — Markdown for instructions, YAML for `harness_profile.yaml`, JSONL for runtime evidence, HTML only for rendered reports/dashboards.

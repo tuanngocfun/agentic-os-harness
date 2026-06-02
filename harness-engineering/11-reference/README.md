@@ -17,13 +17,14 @@
 | Parse markers with substring `grep` | `BOOT_OK_FAKE` can pass | Normalize CRLF and use exact whole-line matching |
 | Use `-serial mon:stdio` as automated evidence | Monitor and COM1 share one stream | Use `-serial file:build/serial.log -monitor none` for tests |
 | Let Makefile variables redirect `dd` or `clean` | Overrides can target unsafe paths | Guard `BUILD_DIR` and `OS_IMG` before write/delete commands |
+| Treat `KERNEL_DEFINES` changes as if Make tracks them automatically | A selftest build can leave stale objects in the next normal image | Store build config in a stamp/config file and make C objects depend on it |
 | Force too much logic into sector 0 | Boot sector exceeds 512 bytes | Split into a 2-stage bootloader |
 | Claim a feature works because files exist or boot markers pass | Scaffolding can be linked but never executed | Add runtime gates and artifacts for each behavior |
 | Run deep subsystem probes in the default boot path | Boot/shell debugging chases the wrong layer | Gate probes behind explicit selftest defines and `make test-deep` |
 | Treat structured panic markers as non-failures | `KERNEL_PANIC:...` can be missed by exact matching | Match failure marker prefixes, not only exact lines |
 | Let a fault test pass without triggering a fault | False confidence | Require exact structured panic evidence |
 | Claim scheduler context switching from printed markers | A test can print labels without executing a context switch | Require either queue-rotation markers or real context-execution evidence, and name the claim accordingly |
-| Let a paging test pass without paging markers | Missing selftest output becomes a false pass | Require exact `PAGING_MAP_OK`, `PAGING_UNMAP_OK`, `PAGING_PERM_OK`, and `PAGING_OK` markers for the current gate |
+| Let a paging test pass without paging markers | Missing selftest output becomes a false pass | Require exact `PAGING_MAP_OK`, `PAGING_UNMAP_OK`, `PAGING_PERM_OK`, `PAGING_WRITE_FAULT_OK`, `PAGING_UNMAP_FAULT_OK`, and `PAGING_OK` markers for the current gate |
 | Prove `echo ok` by grepping typed VGA input | The command line can appear even when command output did not | Use a separate shell I/O gate with an output token distinguishable from the typed command |
 | Use HTML as the primary harness instruction format | Agents need concise editable contracts, not rendered reports | Use Markdown for instructions, YAML for profile/config, JSONL for evidence, and HTML only for reports |
 | Broad Git staging | Can include unrelated/user changes | Stage explicit paths only after status and diff review |
@@ -117,5 +118,5 @@ Runtime evidence:
 - Exception panic: `scripts/exception_test.sh` proves divide-by-zero, invalid-opcode, GPF, and page-fault structured panic paths via `KERNEL_PANIC:<vector>:<code>` markers.
 - Scheduler: `scripts/scheduler_test.sh` proves only ready-queue rotation, not context switching or task execution.
 - Timer: `scripts/timer_test.sh` proves only that PIT-backed ticks increment during the targeted selftest.
-- Paging: `scripts/paging_test.sh` proves only map/unmap plus permission-bit bookkeeping, not permission enforcement, invalidation, protection, or isolation.
+- Paging: `scripts/paging_test.sh` proves map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write fault, and unmap+invlpg fault evidence. It still does not prove user/supervisor isolation, process isolation, or full memory protection.
 - Process/user mode: scaffold only until dedicated runtime tests exist.

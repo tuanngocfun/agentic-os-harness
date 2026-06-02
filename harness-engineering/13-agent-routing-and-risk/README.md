@@ -18,12 +18,12 @@ Proven now:
 - Syscall ABI selftest proves the current `int 0x80` register contract when `make test-syscall` passes.
 - Exception selftest proves divide-by-zero, invalid-opcode, GPF, and page-fault panic evidence as `KERNEL_PANIC:<vector>:<code>` when `make test-exception`, `make test-exception-div0`, `make test-exception-gpf`, and `make test-exception-pagefault` pass.
 - Scheduler selftest proves only queue rotation through `scheduler_tick()` and `scheduler_get_current()`, not context switching.
-- Paging selftest proves only map/unmap plus permission-bit bookkeeping, not permission enforcement, invalidation, protection, or isolation.
+- Paging selftest proves map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write fault, and unmap+invlpg fault evidence, not user/supervisor isolation or process isolation.
 
 Not proven:
 - Timer-driven scheduler/context switching.
 - Ring-3 user-mode transition.
-- Real paging protection, permission enforcement, invalidation, page-fault behavior, and isolation.
+- User/supervisor paging isolation, process isolation, and broader memory protection.
 - Memory allocator or detected memory map.
 
 ## Loop Traps Diagnosed
@@ -37,9 +37,10 @@ These were real current-state issues, not just reviewer anxiety:
 5. The regression contract checked repo-root files from the harness directory, which made kernel/script checks point at missing paths.
 6. A 30-second boot-test timeout made a healthy live kernel look like an agent loop. The default timeout is now short; deeper liveness or soak tests should be explicit.
 7. MiMo claimed scheduler context-switch proof while the selftest only printed `SCHED_A` and `SCHED_B`; the corrected gate now requires real queue rotation and refuses to call it a context switch.
-8. MiMo's paging test could pass when no paging marker appeared; the corrected gate now requires `PAGING_MAP_OK`, `PAGING_UNMAP_OK`, `PAGING_PERM_OK`, and `PAGING_OK`.
+8. MiMo's paging test could pass when no paging marker appeared; the corrected gate now requires `PAGING_MAP_OK`, `PAGING_UNMAP_OK`, `PAGING_PERM_OK`, `PAGING_WRITE_FAULT_OK`, `PAGING_UNMAP_FAULT_OK`, and `PAGING_OK`.
 9. MiMo stopped after marking one subtask complete even though its own todo list still had pending P1/P2 work. A passing gate for one route is a partial handoff unless every pending task in `harness_profile.yaml` is either completed with evidence or explicitly left as next work.
 10. MiMo re-entered the shell loop by adding optional `echo_rendered` evidence to `scripts/shell_test.sh`. Optional evidence that can be false while the script passes creates an ambiguous signal; default gates must either require a check or omit it entirely.
+11. MiMo diagnosed a real Makefile class: `KERNEL_DEFINES` is not a source dependency. The current flag is `ENABLE_PAGING_SELFTEST`, not `CONFIG_PAGING_SELFTEST`; the fix is a `build/kernel_defines.stamp` dependency so plain `make all` rebuilds after selftest flags change.
 
 Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem probes only through explicit deep routes such as `make test-deep`.
 
@@ -48,7 +49,7 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | Scope | Rating | Why |
 |---|---:|---|
 | Boot-to-shell teaching milestone | 80% | Build, boot markers, keyboard IRQ, shell dispatch, and VGA runtime proof pass. |
-| Credible protected OS core | 38% | GDT/IDT exist; timer ticks, syscall ABI, exception panic, scheduler queue rotation, and paging map/unmap/permission-bit bookkeeping have targeted gates, but user mode, context switching, protection, and broader fault coverage are still unproven. |
+| Credible protected OS core | 42% | GDT/IDT exist; timer ticks, syscall ABI, exception panic, scheduler queue rotation, and paging map/unmap/write-fault/unmap-fault evidence have targeted gates, but user mode, context switching, process isolation, and broader memory protection are still unproven. |
 | Blended current project promise | 60% | Real stage-one implementation plus risky stage-two scaffolding. |
 
 ## Routing Matrix
@@ -63,7 +64,7 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | `exception_panic` | IDT exception gates, panic output, negative test harness | Fault tests emit structured `KERNEL_PANIC:<vector>:<code>` and QEMU does not silently triple-fault | Stability of paging/user-mode until those tests exercise the path |
 | `scheduler_queue` | Process creation, ready queue, scheduler tick/current-process APIs | Test proves deterministic queue rotation across two process records | CPU context switch, task execution, preemptive scheduling, or isolation |
 | `scheduler_truth` | PIT timer, scheduler, process, context switch asm/TSS | Test proves at least two runnable contexts execute in expected order | Process isolation or preemptive multitasking without context-save proof |
-| `paging_semantics` | Page tables, allocator for page tables, permissions, invalidation | Map/unmap, writable access, and permission-bit bookkeeping | Memory protection until page-fault, invalidation, and user/supervisor permission-enforcement tests pass |
+| `paging_semantics` | Page tables, allocator for page tables, permissions, invalidation | Map/unmap, writable access, CR0.WP write fault, unmap+invlpg fault evidence, and no selftest flag leakage into default boot | User/supervisor isolation, process isolation, or full memory protection |
 
 ## Format Policy
 
@@ -76,8 +77,8 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Next MiMo Tasks
 
-1. `paging-permission-fault-and-invalidation`
-   Current proof is map/unmap plus permission-bit bookkeeping only. Add invalidation and a negative page-fault/permission-enforcement path before any isolation or memory-protection claim.
+1. `paging-user-supervisor-isolation-proof`
+   Current proof covers supervisor write fault and unmap+invlpg fault evidence. Add user/supervisor enforcement or ring-3 isolation before any process-isolation or full memory-protection claim.
 
 2. `scheduler-context-switch-proof`
    Current proof is only queue rotation. To claim scheduler truth, wire a timer-driven scheduling path or safe context-switch harness and prove two contexts actually execute in a deterministic order.

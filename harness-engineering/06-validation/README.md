@@ -114,11 +114,28 @@ Current claim policy:
 - `bootloader`, `protected_mode_entry`, `serial_markers`, `keyboard_irq`, and `shell_help` are claimable with current default gates.
 - `syscall` and `exception_panic` are claimable only through their targeted deep gates.
 - `timer_ticks` is claimable only through `make test-timer`.
-- `paging` is partially claimable only as map/unmap plus permission-bit bookkeeping; no protection, isolation, permission-enforcement, invalidation, or page-fault claim is allowed yet.
+- `paging` is partially claimable only as map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write-fault evidence, and unmap+invlpg fault evidence. Do not claim user/supervisor isolation, process isolation, or full memory protection yet.
 - `scheduler` is partially claimable only as ready-queue rotation; no context-switch, task-execution, or preemptive-scheduling claim is allowed yet.
 - `memory_info`, `process`, and `user_mode` are not claimable until a targeted runtime gate exists and passes.
 - Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. It must not probe, claim, or write JSONL evidence for `echo ok`; argument-bearing commands require a separate `shell-command-io-proof` route.
 - Filesystem, networking, graphics mode, and additional shell breadth are forbidden next work until the P0/P1 core-risk queue is handled.
+
+## Build-Config Rebuild Protocol
+
+`KERNEL_DEFINES` changes are build inputs. They are not source files, so plain Makefile dependency tracking will not notice a manual transition such as:
+
+```bash
+make -B all KERNEL_DEFINES=-DENABLE_PAGING_SELFTEST
+make all
+```
+
+The Makefile must keep a `build/kernel_defines.stamp` file, make C objects depend on it, and update the stamp only when `KERNEL_DEFINES` content changes. This makes a default `make all` rebuild kernel objects after a selftest image was built, without relying on every agent to remember `-B`.
+
+Validation:
+1. Build a selftest image with a selftest define.
+2. Run plain `make all`.
+3. Confirm C objects rebuild without the selftest define.
+4. Run `make test` and confirm normal boot has no selftest markers such as `PAGING_TEST`.
 
 ## Format Contract
 
@@ -177,6 +194,7 @@ If a match appears, fix the stale snippet before continuing.
 ## Snippet Validation
 
 - Makefile snippets must include `OBJCOPY`.
+- Makefile snippets must treat `KERNEL_DEFINES` or equivalent build config flags as dependencies through a stamp/config file.
 - Makefile snippets must generate `boot_config.inc` from `kernel.bin` size.
 - Makefile snippets must use `wc -c` for portable byte counts.
 - Makefile snippets must guard `BUILD_DIR` and `OS_IMG` before `dd` or `clean`.

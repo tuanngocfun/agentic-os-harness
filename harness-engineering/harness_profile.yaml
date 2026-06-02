@@ -40,7 +40,7 @@ claim_status:
   shell_help: "claimable_with_shell_runtime_test"
   timer_ticks: "claimable_with_timer_test"
   memory_info: "stubbed_not_claimable"
-  paging: "partial_claimable_map_unmap_permission_bookkeeping_test"
+  paging: "partial_claimable_map_unmap_permission_fault_invalidation_test"
   syscall: "claimable_with_syscall_test"
   exception_panic: "claimable_with_exception_test_suite"
   process: "not_claimable"
@@ -61,13 +61,13 @@ deep_gates:
   - "syscall_abi_proof"
   - "exception_panic_markers"
   - "scheduler_queue_rotation_proof"
-  - "paging_map_unmap_permission_bookkeeping_test"
+  - "paging_map_unmap_permission_fault_invalidation_test"
   - "timer_ticks_runtime_assertion"
 
 pending_deep_gates:
   - "page_fault_negative_test"
   - "scheduler_context_switch_proof"
-  - "paging_permission_fault_and_invalidation_test"
+  - "paging_user_supervisor_isolation_test"
   - "memory_detection_runtime_test"
   - "process_user_mode_transition_test"
   - "shell_command_io_stable_test"
@@ -125,9 +125,9 @@ routes:
       - "panic_or_fault_evidence_for_negative_paths"
 
 mimo_next_tasks:
-  - id: "paging-permission-fault-and-invalidation"
+  - id: "paging-user-supervisor-isolation-proof"
     priority: "P1"
-    success: "A targeted gate proves write-protection or user/supervisor enforcement with a structured page-fault marker, plus invalidation behavior; current paging gate proves only map/unmap plus permission-bit bookkeeping."
+    success: "A targeted gate proves user/supervisor enforcement or ring-3 isolation; current paging gate proves map/unmap, CR0.WP-backed write fault, and unmap+invlpg fault evidence only."
   - id: "scheduler-context-switch-proof"
     priority: "P1"
     success: "Timer-driven or explicit safe context-switch path proves at least two runnable contexts actually execute in expected order; current queue-rotation proof is not enough for this claim."

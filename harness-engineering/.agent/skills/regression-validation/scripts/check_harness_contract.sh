@@ -63,6 +63,9 @@ require_grep 'git_preflight[.]sh' "06-validation/README.md"
 require_grep 'explicit user request' "12-git-change-management/README.md"
 require_grep 'Stage explicit file paths only|stage explicit file paths only' "12-git-change-management/README.md"
 require_grep 'qemu exited before timeout' ".agent/skills/compile-and-run/scripts/boot_test.sh"
+require_grep 'KERNEL_DEFINES_STAMP' "$REPO_ROOT/Makefile"
+require_grep 'kernel_defines[.]stamp' "$REPO_ROOT/Makefile"
+require_grep 'FORCE' "$REPO_ROOT/Makefile"
 require_grep 'kernel_sector_limit:[[:space:]]*120' "harness_profile.yaml"
 require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_advanced_core_scaffold"' "harness_profile.yaml"
 require_grep 'format_policy:' "harness_profile.yaml"
@@ -83,7 +86,9 @@ else
   require_grep 'scheduler:[[:space:]]*"not_claimable_no_timer_driven_context_switch"' "harness_profile.yaml"
 fi
 if grep -q 'ENABLE_PAGING_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-paging' "$REPO_ROOT/Makefile" && grep -q 'PAGING_UNMAP_OK' "$REPO_ROOT/scripts/paging_test.sh"; then
-  if grep -q 'PAGING_PERM_OK' "$REPO_ROOT/scripts/paging_test.sh"; then
+  if grep -q 'PAGING_WRITE_FAULT_OK' "$REPO_ROOT/scripts/paging_test.sh" && grep -q 'PAGING_UNMAP_FAULT_OK' "$REPO_ROOT/scripts/paging_test.sh" && grep -q '0x00010000' "$REPO_ROOT/kernel/paging.c"; then
+    require_grep 'paging:[[:space:]]*"partial_claimable_map_unmap_permission_fault_invalidation_test"' "harness_profile.yaml"
+  elif grep -q 'PAGING_PERM_OK' "$REPO_ROOT/scripts/paging_test.sh"; then
     require_grep 'paging:[[:space:]]*"partial_claimable_map_unmap_permission_bookkeeping_test"' "harness_profile.yaml"
   else
     require_grep 'paging:[[:space:]]*"partial_claimable_map_unmap_bookkeeping_test"' "harness_profile.yaml"
@@ -94,7 +99,7 @@ if grep -q 'ENABLE_TIMER_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test
   require_grep 'test-deep:.*test-timer' "$REPO_ROOT/Makefile"
 fi
 require_grep 'user_mode:[[:space:]]*"not_claimable_no_ring3_transition_test"' "harness_profile.yaml"
-require_grep 'paging-permission-fault-and-invalidation' "harness_profile.yaml"
+require_grep 'paging-user-supervisor-isolation-proof' "harness_profile.yaml"
 require_grep 'scheduler-context-switch-proof' "harness_profile.yaml"
 require_grep 'shell-command-io-proof' "harness_profile.yaml"
 require_grep 'Do not add filesystem' "13-agent-routing-and-risk/README.md"
@@ -133,7 +138,8 @@ if command -v rg >/dev/null 2>&1; then
   rg -n 'echo_rendered|send_line[[:space:]]+e[[:space:]]+c[[:space:]]+h[[:space:]]+o|grep .*echo ok|grep .*\\^ok|echo "\[PASS\].*echo|echo command not listed in help|echo ok command returned ok' "$REPO_ROOT/scripts/shell_test.sh" && fail "shell test claims or probes echo through flaky default shell route" || pass "shell test does not overclaim echo"
   rg -n 'context switch verified|SCHED_A|SCHED_B' "$REPO_ROOT/scripts/scheduler_test.sh" && fail "scheduler test overclaims context switch or printed-task markers" || pass "scheduler test requires queue-rotation evidence"
   rg -n 'no paging test markers|paging semantics verified' "$REPO_ROOT/scripts/paging_test.sh" && fail "paging test can pass without paging proof" || pass "paging test requires map/unmap evidence"
-  rg -n 'scheduler:[[:space:]]*"claimable_with_scheduler_test"|paging:[[:space:]]*"claimable_with_paging_test"' "harness_profile.yaml" && fail "harness profile has stale broad core claims" || pass "harness profile uses narrowed core claims"
+  rg -n 'CONFIG_PAGING_SELFTEST' "$REPO_ROOT/Makefile" "$REPO_ROOT/kernel" "$REPO_ROOT/include" "$REPO_ROOT/scripts" && fail "stale CONFIG_PAGING_SELFTEST flag name found in implementation" || pass "no stale CONFIG_PAGING_SELFTEST implementation flag"
+  rg -n 'scheduler:[[:space:]]*"claimable_with_scheduler_test"|paging:[[:space:]]*"claimable_with_paging_test"|paging:[[:space:]]*"partial_claimable_map_unmap_permission_bookkeeping_test"' "harness_profile.yaml" && fail "harness profile has stale broad or downgraded core claims" || pass "harness profile uses narrowed core claims"
 else
   fail "rg not installed"
 fi
