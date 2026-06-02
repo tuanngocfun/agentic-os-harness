@@ -71,6 +71,22 @@ void kernel_main(void) {
     }
 #endif
 
+#ifdef ENABLE_TIMER_SELFTEST
+    {
+        serial_puts("TIMER_TEST\n");
+
+        uint32_t ticks_before = timer_get_ticks();
+        for (volatile int i = 0; i < 10000000; i++);
+        uint32_t ticks_after = timer_get_ticks();
+
+        if (ticks_after > ticks_before) {
+            serial_puts("TIMER_TICKS_OK\n");
+        } else {
+            serial_puts("TIMER_TICKS_FAIL\n");
+        }
+    }
+#endif
+
 #ifdef ENABLE_SCHEDULER_SELFTEST
     {
         serial_puts("SCHED_START\n");

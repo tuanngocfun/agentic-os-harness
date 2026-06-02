@@ -162,7 +162,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging
+test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-timer
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -198,9 +198,13 @@ test-paging:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_PAGING_SELFTEST
 	@bash scripts/paging_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
+test-timer:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_TIMER_SELFTEST
+	@bash scripts/timer_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 clean: guard-paths
 	rm -rf $(BUILD_DIR)
 
 -include $(BUILD_DIR)/*.d
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging clean
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-timer clean
