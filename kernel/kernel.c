@@ -101,13 +101,22 @@ void kernel_main(void) {
         volatile uint32_t *ptr = (volatile uint32_t *)test_addr;
         *ptr = 0xDEADBEEF;
 
-        if (*ptr == 0xDEADBEEF) {
+        int map_ok = paging_is_mapped(test_addr) && (*ptr == 0xDEADBEEF);
+        if (map_ok) {
+            serial_puts("PAGING_MAP_OK\n");
+        }
+
+        paging_unmap_page(test_addr);
+        int unmap_ok = !paging_is_mapped(test_addr);
+        if (unmap_ok) {
+            serial_puts("PAGING_UNMAP_OK\n");
+        }
+
+        if (map_ok && unmap_ok) {
             serial_puts("PAGING_OK\n");
         } else {
             serial_puts("PAGING_FAIL\n");
         }
-
-        paging_unmap_page(test_addr);
     }
 #endif
 

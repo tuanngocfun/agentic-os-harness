@@ -69,10 +69,14 @@ echo "[PASS] BOOT_OK"
 echo "[PASS] KERNEL_INIT_OK"
 echo "[PASS] SHELL_READY"
 
-if line_present "PAGING_OK"; then
-  echo "[PASS] paging semantics verified"
+if marker_present "PAGING_FAIL"; then
+  fail "paging selftest reported PAGING_FAIL"
+fi
+
+if marker_present "PAGING_MAP_OK" && marker_present "PAGING_UNMAP_OK" && marker_present "PAGING_OK"; then
+  echo "[PASS] paging map/unmap bookkeeping verified"
 else
-  echo "[INFO] no paging test markers (expected - paging test only runs with selftest flag)"
+  fail "paging map/unmap not verified - missing PAGING_MAP_OK, PAGING_UNMAP_OK, or PAGING_OK"
 fi
 
 echo "=== PAGING TEST PASSED ==="

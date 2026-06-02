@@ -32,10 +32,6 @@ static void bitmap_set(int page) {
     page_bitmap[page / 8] |= (1 << (page % 8));
 }
 
-static void bitmap_clear(int page) {
-    page_bitmap[page / 8] &= ~(1 << (page % 8));
-}
-
 static int bitmap_test(int page) {
     return (page_bitmap[page / 8] >> (page % 8)) & 1;
 }
@@ -112,6 +108,18 @@ void paging_unmap_page(uint32_t virtual_addr) {
     page_table[table_index] = 0x02;
 
     invlpg(virtual_addr);
+}
+
+int paging_is_mapped(uint32_t virtual_addr) {
+    uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
+    uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
+
+    if (!(page_directory[dir_index] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    uint32_t *page_table = (uint32_t *)(page_directory[dir_index] & 0xFFFFF000);
+    return (page_table[table_index] & PAGE_PRESENT) != 0;
 }
 
 uint32_t paging_get_page_table_addr(uint32_t virtual_addr) {

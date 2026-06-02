@@ -6,6 +6,7 @@
 void paging_init(void);
 void paging_map_page(uint32_t virtual_addr, uint32_t physical_addr, uint32_t flags);
 void paging_unmap_page(uint32_t virtual_addr);
+int paging_is_mapped(uint32_t virtual_addr);
 
 #define PAGE_PRESENT    0x01
 #define PAGE_WRITABLE   0x02
