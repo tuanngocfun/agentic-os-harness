@@ -95,6 +95,26 @@ void kernel_main(void) {
     }
 #endif
 
+#ifdef ENABLE_PAGING_SELFTEST
+    {
+        serial_puts("PAGING_TEST\n");
+
+        uint32_t test_addr = 0x400000;
+        paging_map_page(test_addr, 0x200000, PAGE_PRESENT | PAGE_WRITABLE);
+
+        volatile uint32_t *ptr = (volatile uint32_t *)test_addr;
+        *ptr = 0xDEADBEEF;
+
+        if (*ptr == 0xDEADBEEF) {
+            serial_puts("PAGING_OK\n");
+        } else {
+            serial_puts("PAGING_FAIL\n");
+        }
+
+        paging_unmap_page(test_addr);
+    }
+#endif
+
     shell_init();
     serial_puts("SHELL_READY\n");
     vga_puts("Shell ready. Type 'help' for commands.\n");

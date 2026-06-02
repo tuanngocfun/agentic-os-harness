@@ -33,7 +33,7 @@ claim_status:
   shell_help: "claimable_with_shell_runtime_test"
   timer_ticks: "partial_not_claimable_without_runtime_assertion"
   memory_info: "stubbed_not_claimable"
-  paging: "not_claimable"
+  paging: "claimable_with_paging_test"
   syscall: "claimable_with_syscall_test"
   exception_panic: "claimable_with_exception_test"
   process: "not_claimable"
