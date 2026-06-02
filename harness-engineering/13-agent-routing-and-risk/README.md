@@ -37,6 +37,7 @@ These were real current-state issues, not just reviewer anxiety:
 6. A 30-second boot-test timeout made a healthy live kernel look like an agent loop. The default timeout is now short; deeper liveness or soak tests should be explicit.
 7. MiMo claimed scheduler context-switch proof while the selftest only printed `SCHED_A` and `SCHED_B`; the corrected gate now requires real queue rotation and refuses to call it a context switch.
 8. MiMo's paging test could pass when no paging marker appeared; the corrected gate now requires `PAGING_MAP_OK`, `PAGING_UNMAP_OK`, and `PAGING_OK`.
+9. MiMo stopped after marking one subtask complete even though its own todo list still had pending P1/P2 work. A passing gate for one route is a partial handoff unless every pending task in `harness_profile.yaml` is either completed with evidence or explicitly left as next work.
 
 Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem probes only through explicit deep routes such as `make test-deep`.
 
@@ -116,6 +117,8 @@ Each MiMo handoff must answer:
 - Files touched:
 - Claim being made:
 - Claim status before/after:
+- Pending tasks remaining:
+- Handoff status: complete for this route, or partial with next route:
 - Fast gates run:
 - Deep gates run:
 - Evidence artifacts:

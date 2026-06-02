@@ -14,15 +14,8 @@
 #include "shell.h"
 
 #ifdef ENABLE_SCHEDULER_SELFTEST
-static volatile int sched_tick_count = 0;
-
-static void scheduler_selftest_task_a(void) {
-    serial_puts("SCHED_A\n");
-}
-
-static void scheduler_selftest_task_b(void) {
-    serial_puts("SCHED_B\n");
-}
+static void scheduler_selftest_task_a(void) {}
+static void scheduler_selftest_task_b(void) {}
 #endif
 
 void kernel_main(void) {
@@ -113,10 +106,6 @@ void kernel_main(void) {
                 serial_puts("SCHED_QUEUE_FAIL\n");
             }
 
-            scheduler_selftest_task_a();
-            scheduler_selftest_task_b();
-
-            serial_puts("SCHED_OK\n");
         }
 
         scheduler_init();
