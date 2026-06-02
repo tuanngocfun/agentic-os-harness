@@ -85,6 +85,8 @@ Deep gates are explicit and may rebuild with selftest defines:
 - `make test-deep`
 - `make test-syscall`
 - `make test-exception`
+- `make test-scheduler`
+- `make test-paging`
 
 Rules:
 - Do not put deep probes directly in the default `kernel_main()` path.
@@ -99,14 +101,26 @@ Rules:
 - current required, optional, and failure markers;
 - claim status for each subsystem;
 - fast gates and deep gates;
+- format policy for Markdown/YAML/JSONL/HTML artifacts;
 - MiMo next-task priority.
 
 Any doc, skill, or handoff that conflicts with the profile is stale. Fix the conflict before accepting implementation work.
 
 Current claim policy:
-- `bootloader`, `protected_mode_entry`, `serial_markers`, `keyboard_irq`, and `shell_help` are claimable with current gates.
-- `timer_ticks`, `memory_info`, `paging`, `syscall`, `process`, `scheduler`, and `user_mode` are not claimable until a targeted runtime gate exists and passes.
+- `bootloader`, `protected_mode_entry`, `serial_markers`, `keyboard_irq`, and `shell_help` are claimable with current default gates.
+- `syscall` and `exception_panic` are claimable only through their targeted deep gates.
+- `paging` is partially claimable only as map/unmap bookkeeping plus writable access; no protection, isolation, permission, or page-fault claim is allowed yet.
+- `scheduler` is partially claimable only as ready-queue rotation; no context-switch, task-execution, or preemptive-scheduling claim is allowed yet.
+- `timer_ticks`, `memory_info`, `process`, and `user_mode` are not claimable until a targeted runtime gate exists and passes.
 - Filesystem, networking, graphics mode, and additional shell breadth are forbidden next work until the P0/P1 core-risk queue is handled.
+
+## Format Contract
+
+Use the format split from `considerations/`:
+- Markdown: agent instructions, role docs, skills, checklists, and human-readable guides.
+- YAML: single-source profile/config such as `harness_profile.yaml`.
+- JSONL: append-only runtime evidence written by scripts, not by prose editors.
+- HTML: rendered reports and dashboards only; do not use HTML as the primary agent instruction contract.
 
 ## Marker Parser
 

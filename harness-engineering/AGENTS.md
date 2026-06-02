@@ -71,6 +71,7 @@ llms.txt                  ← Root discovery index for agents
 - **Evidence contract** — Automated test uses dedicated serial file, exact marker parser, QEMU status capture, and machine-written evidence
 - **Git contract** — Inspect status/diff before handoff; stage only explicit paths after approval; never stage deletions or mutate history without explicit user request
 - **Claim contract** — A subsystem is not "working" until `harness_profile.yaml` marks it claimable and a targeted runtime gate proves it.
+- **Format contract** — Markdown for instructions, YAML for `harness_profile.yaml`, JSONL for runtime evidence, HTML only for rendered reports/dashboards.
 
 ## Engineering Rubric
 
@@ -78,6 +79,7 @@ llms.txt                  ← Root discovery index for agents
 - Every autonomous run should leave evidence: prompt, files touched, tool calls, memory updates, guardrails, eval verdicts, and side effects.
 - Changes pass risk gates in order: Git status/diff, build correctness, boot markers, regression checks, and safety constraints.
 - MiMo must route through `13-agent-routing-and-risk/README.md`; advanced core work needs a targeted deep gate before it can change claim status.
+- Partial core proofs must be named precisely: scheduler queue rotation is not context switching, and paging map/unmap bookkeeping is not memory isolation.
 
 ## Sources
 

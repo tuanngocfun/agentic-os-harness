@@ -22,6 +22,9 @@
 | Run deep subsystem probes in the default boot path | Boot/shell debugging chases the wrong layer | Gate probes behind explicit selftest defines and `make test-deep` |
 | Treat structured panic markers as non-failures | `KERNEL_PANIC:...` can be missed by exact matching | Match failure marker prefixes, not only exact lines |
 | Let a fault test pass without triggering a fault | False confidence | Require exact structured panic evidence |
+| Claim scheduler context switching from printed markers | A test can print labels without executing a context switch | Require either queue-rotation markers or real context-execution evidence, and name the claim accordingly |
+| Let a paging test pass without paging markers | Missing selftest output becomes a false pass | Require exact `PAGING_MAP_OK`, `PAGING_UNMAP_OK`, and `PAGING_OK` markers for the current gate |
+| Use HTML as the primary harness instruction format | Agents need concise editable contracts, not rendered reports | Use Markdown for instructions, YAML for profile/config, JSONL for evidence, and HTML only for reports |
 | Broad Git staging | Can include unrelated/user changes | Stage explicit paths only after status and diff review |
 | Stage generated build artifacts | Makes repo stale and hard to review | Keep `build/` and binary outputs ignored/untracked |
 | Mutate Git history or remote state casually | Can destroy collaboration state | Require explicit user request and current status/diff evidence |
@@ -109,4 +112,8 @@ Markers:
 
 Runtime evidence:
 - Shell: `scripts/shell_test.sh` must prove keyboard input, command dispatch, and VGA output for `help`. Argument-bearing commands such as `echo` need a separate stable input proof.
-- Process/scheduler/syscall/user mode: scaffold only until dedicated runtime tests exist.
+- Syscall: `scripts/syscall_test.sh` proves only the current `int 0x80` ABI contract.
+- Exception panic: `scripts/exception_test.sh` proves only the invalid-opcode structured panic path.
+- Scheduler: `scripts/scheduler_test.sh` proves only ready-queue rotation, not context switching or task execution.
+- Paging: `scripts/paging_test.sh` proves only map/unmap bookkeeping plus writable access for one page, not protection or isolation.
+- Process/user mode: scaffold only until dedicated runtime tests exist.

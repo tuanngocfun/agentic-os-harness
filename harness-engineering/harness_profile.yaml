@@ -3,6 +3,13 @@ profile_name: "mimo-v2.5pro-os-harness-profile"
 project_phase: "boot_to_shell_proven_advanced_core_scaffold"
 source_of_truth: true
 
+format_policy:
+  instructions: "markdown"
+  machine_profile: "yaml"
+  runtime_evidence: "jsonl"
+  rendered_reports: "html"
+  rule: "Instruction files stay concise Markdown; machine state stays YAML/JSONL; HTML is for rendered reports, not agent input contracts."
+
 boot_profile:
   loader: "phase1_track_rolling_chs"
   kernel_sector_limit: 120
@@ -53,9 +60,13 @@ deep_gates:
   - "make test-deep"
   - "syscall_abi_proof"
   - "exception_panic_markers"
+  - "scheduler_queue_rotation_proof"
+  - "paging_map_unmap_bookkeeping_test"
+
+pending_deep_gates:
   - "page_fault_negative_test"
-  - "scheduler_tick_context_switch_proof"
-  - "paging_map_unmap_invalidation_test"
+  - "scheduler_context_switch_proof"
+  - "paging_permission_and_invalidation_test"
   - "shell_input_fuzz_or_mutation_check"
 
 routes:
@@ -119,10 +130,10 @@ mimo_next_tasks:
     success: "Divide-by-zero, invalid opcode, GPF, and page fault emit structured KERNEL_PANIC evidence."
   - id: "scheduler-truth"
     priority: "P1"
-    success: "Timer-driven scheduler path proves at least two runnable contexts switch predictably."
+    success: "Timer-driven scheduler path proves at least two runnable contexts actually execute in expected order; current queue-rotation proof is not enough for this claim."
   - id: "paging-semantics"
     priority: "P1"
-    success: "Page table allocation, map/unmap, permission bits, and invalidation have targeted tests."
+    success: "Page table allocation, map/unmap, permission bits, invalidation, and negative page-fault paths have targeted tests; current gate proves only map/unmap bookkeeping plus writable access."
   - id: "evidence-unification"
     priority: "P1"
     success: "Boot and shell runtime tests append machine-readable evidence to one JSONL stream."
