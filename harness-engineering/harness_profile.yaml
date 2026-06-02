@@ -40,7 +40,7 @@ claim_status:
   shell_help: "claimable_with_shell_runtime_test"
   timer_ticks: "claimable_with_timer_test"
   memory_info: "stubbed_not_claimable"
-  paging: "claimable_with_paging_test"
+  paging: "partial_claimable_map_unmap_permission_bookkeeping_test"
   syscall: "claimable_with_syscall_test"
   exception_panic: "claimable_with_exception_test_suite"
   process: "not_claimable"
@@ -61,13 +61,16 @@ deep_gates:
   - "syscall_abi_proof"
   - "exception_panic_markers"
   - "scheduler_queue_rotation_proof"
-  - "paging_map_unmap_bookkeeping_test"
+  - "paging_map_unmap_permission_bookkeeping_test"
+  - "timer_ticks_runtime_assertion"
 
 pending_deep_gates:
   - "page_fault_negative_test"
   - "scheduler_context_switch_proof"
-  - "paging_permission_and_invalidation_test"
-  - "shell_input_fuzz_or_mutation_check"
+  - "paging_permission_fault_and_invalidation_test"
+  - "memory_detection_runtime_test"
+  - "process_user_mode_transition_test"
+  - "shell_command_io_stable_test"
 
 routes:
   harness_only:
@@ -122,24 +125,21 @@ routes:
       - "panic_or_fault_evidence_for_negative_paths"
 
 mimo_next_tasks:
-  - id: "syscall-abi-proof"
-    priority: "P0"
-    success: "A runtime gate proves int 0x80 register arguments and return value."
-  - id: "exception-panic-path"
-    priority: "P0"
-    success: "Divide-by-zero, invalid opcode, GPF, and page fault emit structured KERNEL_PANIC evidence."
-  - id: "scheduler-truth"
+  - id: "paging-permission-fault-and-invalidation"
     priority: "P1"
-    success: "Timer-driven scheduler path proves at least two runnable contexts actually execute in expected order; current queue-rotation proof is not enough for this claim."
-  - id: "paging-semantics"
+    success: "A targeted gate proves write-protection or user/supervisor enforcement with a structured page-fault marker, plus invalidation behavior; current paging gate proves only map/unmap plus permission-bit bookkeeping."
+  - id: "scheduler-context-switch-proof"
     priority: "P1"
-    success: "Page table allocation, map/unmap, permission bits, invalidation, and negative page-fault paths have targeted tests; current gate proves only map/unmap bookkeeping plus writable access."
-  - id: "evidence-unification"
+    success: "Timer-driven or explicit safe context-switch path proves at least two runnable contexts actually execute in expected order; current queue-rotation proof is not enough for this claim."
+  - id: "memory-detection-proof"
     priority: "P1"
-    success: "Boot and shell runtime tests append machine-readable evidence to one JSONL stream."
+    success: "A runtime gate proves detected memory size/source rather than returning a stubbed constant."
+  - id: "process-user-mode-proof"
+    priority: "P1"
+    success: "A targeted gate proves a real ring-3 transition or keeps process/user mode explicitly not claimable."
   - id: "shell-command-io-proof"
     priority: "P2"
-    success: "A stable input path proves argument-bearing shell commands such as echo, not only help dispatch."
+    success: "A separate targeted gate proves argument-bearing shell commands such as echo, not default scripts/shell_test.sh; the proof must distinguish typed input from command output."
 
 forbidden_next_breadth:
   - "filesystem"

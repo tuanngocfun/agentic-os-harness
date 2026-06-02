@@ -23,7 +23,8 @@
 | Treat structured panic markers as non-failures | `KERNEL_PANIC:...` can be missed by exact matching | Match failure marker prefixes, not only exact lines |
 | Let a fault test pass without triggering a fault | False confidence | Require exact structured panic evidence |
 | Claim scheduler context switching from printed markers | A test can print labels without executing a context switch | Require either queue-rotation markers or real context-execution evidence, and name the claim accordingly |
-| Let a paging test pass without paging markers | Missing selftest output becomes a false pass | Require exact `PAGING_MAP_OK`, `PAGING_UNMAP_OK`, and `PAGING_OK` markers for the current gate |
+| Let a paging test pass without paging markers | Missing selftest output becomes a false pass | Require exact `PAGING_MAP_OK`, `PAGING_UNMAP_OK`, `PAGING_PERM_OK`, and `PAGING_OK` markers for the current gate |
+| Prove `echo ok` by grepping typed VGA input | The command line can appear even when command output did not | Use a separate shell I/O gate with an output token distinguishable from the typed command |
 | Use HTML as the primary harness instruction format | Agents need concise editable contracts, not rendered reports | Use Markdown for instructions, YAML for profile/config, JSONL for evidence, and HTML only for reports |
 | Broad Git staging | Can include unrelated/user changes | Stage explicit paths only after status and diff review |
 | Stage generated build artifacts | Makes repo stale and hard to review | Keep `build/` and binary outputs ignored/untracked |
@@ -115,5 +116,6 @@ Runtime evidence:
 - Syscall: `scripts/syscall_test.sh` proves only the current `int 0x80` ABI contract.
 - Exception panic: `scripts/exception_test.sh` proves divide-by-zero, invalid-opcode, GPF, and page-fault structured panic paths via `KERNEL_PANIC:<vector>:<code>` markers.
 - Scheduler: `scripts/scheduler_test.sh` proves only ready-queue rotation, not context switching or task execution.
-- Paging: `scripts/paging_test.sh` proves only map/unmap bookkeeping plus writable access for one page, not protection or isolation.
+- Timer: `scripts/timer_test.sh` proves only that PIT-backed ticks increment during the targeted selftest.
+- Paging: `scripts/paging_test.sh` proves only map/unmap plus permission-bit bookkeeping, not permission enforcement, invalidation, protection, or isolation.
 - Process/user mode: scaffold only until dedicated runtime tests exist.

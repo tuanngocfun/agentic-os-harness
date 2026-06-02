@@ -49,6 +49,7 @@ require_file "../scripts/syscall_test.sh"
 require_file "../scripts/exception_test.sh"
 require_file "../scripts/scheduler_test.sh"
 require_file "../scripts/paging_test.sh"
+require_file "../scripts/timer_test.sh"
 
 require_grep 'AGENTS[.]md' "llms.txt"
 require_grep '06-validation/README[.]md' "llms.txt"
@@ -82,11 +83,20 @@ else
   require_grep 'scheduler:[[:space:]]*"not_claimable_no_timer_driven_context_switch"' "harness_profile.yaml"
 fi
 if grep -q 'ENABLE_PAGING_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-paging' "$REPO_ROOT/Makefile" && grep -q 'PAGING_UNMAP_OK' "$REPO_ROOT/scripts/paging_test.sh"; then
-  require_grep 'paging:[[:space:]]*"partial_claimable_map_unmap_bookkeeping_test"' "harness_profile.yaml"
+  if grep -q 'PAGING_PERM_OK' "$REPO_ROOT/scripts/paging_test.sh"; then
+    require_grep 'paging:[[:space:]]*"partial_claimable_map_unmap_permission_bookkeeping_test"' "harness_profile.yaml"
+  else
+    require_grep 'paging:[[:space:]]*"partial_claimable_map_unmap_bookkeeping_test"' "harness_profile.yaml"
+  fi
+fi
+if grep -q 'ENABLE_TIMER_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-timer' "$REPO_ROOT/Makefile" && grep -q 'TIMER_TICKS_OK' "$REPO_ROOT/scripts/timer_test.sh"; then
+  require_grep 'timer_ticks:[[:space:]]*"claimable_with_timer_test"' "harness_profile.yaml"
+  require_grep 'test-deep:.*test-timer' "$REPO_ROOT/Makefile"
 fi
 require_grep 'user_mode:[[:space:]]*"not_claimable_no_ring3_transition_test"' "harness_profile.yaml"
-require_grep 'syscall-abi-proof' "harness_profile.yaml"
-require_grep 'exception-panic-path' "harness_profile.yaml"
+require_grep 'paging-permission-fault-and-invalidation' "harness_profile.yaml"
+require_grep 'scheduler-context-switch-proof' "harness_profile.yaml"
+require_grep 'shell-command-io-proof' "harness_profile.yaml"
 require_grep 'Do not add filesystem' "13-agent-routing-and-risk/README.md"
 require_grep 'Claim-aware routing matrix|Claim-aware MiMo routing|Routing Matrix' "13-agent-routing-and-risk/README.md"
 require_grep 'Loop Traps Diagnosed' "13-agent-routing-and-risk/README.md"
@@ -120,7 +130,7 @@ if command -v rg >/dev/null 2>&1; then
   rg -n 'stat -c%s|grep -q "\$marker"|> "\$SERIAL_LOG" 2>&1 \|\| true|-serial mon:stdio.*>.*build/serial[.]log' . --glob '!**/06-validation/**' --glob '!**/11-reference/**' && fail "weak parser/QEMU evidence pattern found" || pass "no weak parser/QEMU evidence pattern"
   rg -n 'echo "\[PASS\].*exception.*"|EXCEPTION PANIC TEST PASSED' "$REPO_ROOT/scripts/exception_test.sh" | rg -v 'panic_present|structured|===' && fail "exception test can pass without proving a fault" || pass "exception test requires structured panic evidence"
   rg -n 'int [$]0x0D' "$REPO_ROOT/kernel/kernel.c" && fail "GPF selftest uses software interrupt instead of protection violation" || pass "GPF selftest does not use software interrupt"
-  rg -n 'echo "\[PASS\].*echo|echo command not listed in help|echo ok command returned ok' "$REPO_ROOT/scripts/shell_test.sh" && fail "shell test claims echo proof through flaky monitor input" || pass "shell test does not overclaim echo"
+  rg -n 'echo_rendered|send_line[[:space:]]+e[[:space:]]+c[[:space:]]+h[[:space:]]+o|grep .*echo ok|grep .*\\^ok|echo "\[PASS\].*echo|echo command not listed in help|echo ok command returned ok' "$REPO_ROOT/scripts/shell_test.sh" && fail "shell test claims or probes echo through flaky default shell route" || pass "shell test does not overclaim echo"
   rg -n 'context switch verified|SCHED_A|SCHED_B' "$REPO_ROOT/scripts/scheduler_test.sh" && fail "scheduler test overclaims context switch or printed-task markers" || pass "scheduler test requires queue-rotation evidence"
   rg -n 'no paging test markers|paging semantics verified' "$REPO_ROOT/scripts/paging_test.sh" && fail "paging test can pass without paging proof" || pass "paging test requires map/unmap evidence"
   rg -n 'scheduler:[[:space:]]*"claimable_with_scheduler_test"|paging:[[:space:]]*"claimable_with_paging_test"' "harness_profile.yaml" && fail "harness profile has stale broad core claims" || pass "harness profile uses narrowed core claims"

@@ -90,6 +90,7 @@ Deep gates are explicit and may rebuild with selftest defines:
 - `make test-exception-pagefault`
 - `make test-scheduler`
 - `make test-paging`
+- `make test-timer`
 
 Rules:
 - Do not put deep probes directly in the default `kernel_main()` path.
@@ -112,9 +113,11 @@ Any doc, skill, or handoff that conflicts with the profile is stale. Fix the con
 Current claim policy:
 - `bootloader`, `protected_mode_entry`, `serial_markers`, `keyboard_irq`, and `shell_help` are claimable with current default gates.
 - `syscall` and `exception_panic` are claimable only through their targeted deep gates.
-- `paging` is partially claimable only as map/unmap bookkeeping plus writable access; no protection, isolation, permission, or page-fault claim is allowed yet.
+- `timer_ticks` is claimable only through `make test-timer`.
+- `paging` is partially claimable only as map/unmap plus permission-bit bookkeeping; no protection, isolation, permission-enforcement, invalidation, or page-fault claim is allowed yet.
 - `scheduler` is partially claimable only as ready-queue rotation; no context-switch, task-execution, or preemptive-scheduling claim is allowed yet.
-- `timer_ticks`, `memory_info`, `process`, and `user_mode` are not claimable until a targeted runtime gate exists and passes.
+- `memory_info`, `process`, and `user_mode` are not claimable until a targeted runtime gate exists and passes.
+- Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. It must not probe, claim, or write JSONL evidence for `echo ok`; argument-bearing commands require a separate `shell-command-io-proof` route.
 - Filesystem, networking, graphics mode, and additional shell breadth are forbidden next work until the P0/P1 core-risk queue is handled.
 
 ## Format Contract

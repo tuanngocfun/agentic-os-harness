@@ -79,7 +79,7 @@ llms.txt                  ← Root discovery index for agents
 - Every autonomous run should leave evidence: prompt, files touched, tool calls, memory updates, guardrails, eval verdicts, and side effects.
 - Changes pass risk gates in order: Git status/diff, build correctness, boot markers, regression checks, and safety constraints.
 - MiMo must route through `13-agent-routing-and-risk/README.md`; advanced core work needs a targeted deep gate before it can change claim status.
-- Partial core proofs must be named precisely: scheduler queue rotation is not context switching, and paging map/unmap bookkeeping is not memory isolation.
+- Partial core proofs must be named precisely: scheduler queue rotation is not context switching, paging map/unmap/permission-bit bookkeeping is not memory isolation, and default shell `help` proof is not argument-bearing shell I/O proof.
 
 ## Sources
 
