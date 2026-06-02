@@ -69,10 +69,14 @@ echo "[PASS] BOOT_OK"
 echo "[PASS] KERNEL_INIT_OK"
 echo "[PASS] SHELL_READY"
 
-if line_present "SCHED_A" && line_present "SCHED_B"; then
-  echo "[PASS] scheduler context switch verified"
+if marker_present "SCHED_QUEUE_FAIL"; then
+  fail "scheduler queue rotation reported SCHED_QUEUE_FAIL"
+fi
+
+if marker_present "SCHED_QUEUE_OK"; then
+  echo "[PASS] scheduler queue rotation verified"
 else
-  fail "scheduler not verified - missing SCHED_A or SCHED_B"
+  fail "scheduler queue rotation not verified - missing SCHED_QUEUE_OK"
 fi
 
 echo "=== SCHEDULER TEST PASSED ==="

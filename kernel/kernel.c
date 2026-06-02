@@ -13,6 +13,11 @@
 #include "scheduler.h"
 #include "shell.h"
 
+#ifdef ENABLE_SCHEDULER_SELFTEST
+static void scheduler_selftest_task_a(void) {}
+static void scheduler_selftest_task_b(void) {}
+#endif
+
 void kernel_main(void) {
     serial_init();
     serial_puts("KERNEL_INIT_OK\n");
@@ -49,49 +54,40 @@ void kernel_main(void) {
     {
         serial_puts("SCHED_START\n");
 
-        static uint32_t stack_a[1024];
-        static uint32_t stack_b[1024];
+        process_init();
+        scheduler_init();
 
-        static uint32_t esp_a = 0;
-        static uint32_t esp_b = 0;
+        struct process *task_a = process_create((uint32_t)scheduler_selftest_task_a, 0);
+        struct process *task_b = process_create((uint32_t)scheduler_selftest_task_b, 0);
 
-        extern void context_switch(uint32_t *save_esp, uint32_t *load_esp);
+        if (!task_a || !task_b) {
+            serial_puts("SCHED_QUEUE_FAIL\n");
+        } else {
+            scheduler_add(task_a);
+            scheduler_add(task_b);
 
-        uint32_t *top_a = stack_a + 1024;
-        uint32_t *top_b = stack_b + 1024;
+            scheduler_tick();
+            struct process *first = scheduler_get_current();
 
-        *(--top_a) = 0x10;
-        *(--top_a) = (uint32_t)(stack_a + 1024);
-        *(--top_a) = 0x202;
-        *(--top_a) = 0x08;
-        *(--top_a) = (uint32_t)0;
-        *(--top_a) = 0;
-        *(--top_a) = 0;
-        *(--top_a) = 0;
-        *(--top_a) = 0;
-        *(--top_a) = 0;
-        *(--top_a) = 0;
-        *(--top_a) = 0;
+            scheduler_tick();
+            struct process *second = scheduler_get_current();
 
-        *(--top_b) = 0x10;
-        *(--top_b) = (uint32_t)(stack_b + 1024);
-        *(--top_b) = 0x202;
-        *(--top_b) = 0x08;
-        *(--top_b) = (uint32_t)0;
-        *(--top_b) = 0;
-        *(--top_b) = 0;
-        *(--top_b) = 0;
-        *(--top_b) = 0;
-        *(--top_b) = 0;
-        *(--top_b) = 0;
-        *(--top_b) = 0;
+            scheduler_tick();
+            struct process *third = scheduler_get_current();
 
-        esp_a = (uint32_t)top_a;
-        esp_b = (uint32_t)top_b;
+            if (first == task_a &&
+                second == task_b &&
+                third == task_a &&
+                scheduler_get_count() == 3 &&
+                process_get_count() == 2) {
+                serial_puts("SCHED_QUEUE_OK\n");
+            } else {
+                serial_puts("SCHED_QUEUE_FAIL\n");
+            }
+        }
 
-        serial_puts("SCHED_A\n");
-        serial_puts("SCHED_B\n");
-        serial_puts("SCHED_OK\n");
+        scheduler_init();
+        process_init();
     }
 #endif
 
