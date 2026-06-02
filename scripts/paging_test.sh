@@ -53,6 +53,9 @@ write_evidence() {
   paging_map_ok=false
   paging_unmap_ok=false
   paging_perm_ok=false
+  paging_read_ok=false
+  paging_write_fault_ok=false
+  paging_unmap_fault_ok=false
   paging_ok=false
   paging_fail=false
   marker_present "BOOT_OK" && boot_ok=true
@@ -61,15 +64,20 @@ write_evidence() {
   marker_present "PAGING_MAP_OK" && paging_map_ok=true
   marker_present "PAGING_UNMAP_OK" && paging_unmap_ok=true
   marker_present "PAGING_PERM_OK" && paging_perm_ok=true
+  marker_present "PAGING_READ_OK" && paging_read_ok=true
+  marker_present "PAGING_WRITE_FAULT_OK" && paging_write_fault_ok=true
+  marker_present "PAGING_UNMAP_FAULT_OK" && paging_unmap_fault_ok=true
   marker_present "PAGING_OK" && paging_ok=true
   marker_present "PAGING_FAIL" && paging_fail=true
 
   task_json="$(json_escape "$TASK_NAME")"
-  printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","markers":{"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"SHELL_READY":%s},"subsystem":{"PAGING_MAP_OK":%s,"PAGING_UNMAP_OK":%s,"PAGING_PERM_OK":%s,"PAGING_OK":%s,"PAGING_FAIL":%s},"verdict":"%s"}\n' \
+  printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","markers":{"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"SHELL_READY":%s},"subsystem":{"PAGING_MAP_OK":%s,"PAGING_UNMAP_OK":%s,"PAGING_PERM_OK":%s,"PAGING_READ_OK":%s,"PAGING_WRITE_FAULT_OK":%s,"PAGING_UNMAP_FAULT_OK":%s,"PAGING_OK":%s,"PAGING_FAIL":%s},"verdict":"%s"}\n' \
     "$run_id" "$task_json" "$started_at" "$ended_at" "$qemu_status" \
     "$boot_bytes" "$boot_sha" "$kernel_bytes" "$kernel_sha" "$serial_sha" \
     "$boot_ok" "$kernel_ok" "$shell_ready" \
-    "$paging_map_ok" "$paging_unmap_ok" "$paging_perm_ok" "$paging_ok" "$paging_fail" "$verdict" >> "$EVIDENCE_LOG"
+    "$paging_map_ok" "$paging_unmap_ok" "$paging_perm_ok" \
+    "$paging_read_ok" "$paging_write_fault_ok" "$paging_unmap_fault_ok" \
+    "$paging_ok" "$paging_fail" "$verdict" >> "$EVIDENCE_LOG"
 }
 
 clean_serial() {
@@ -145,12 +153,12 @@ if marker_present "PAGING_FAIL"; then
   fail "paging selftest reported PAGING_FAIL"
 fi
 
-if marker_present "PAGING_MAP_OK" && marker_present "PAGING_UNMAP_OK" && marker_present "PAGING_PERM_OK" && marker_present "PAGING_OK"; then
-  echo "[PASS] paging map/unmap/permission bookkeeping verified"
+if marker_present "PAGING_MAP_OK" && marker_present "PAGING_UNMAP_OK" && marker_present "PAGING_PERM_OK" && marker_present "PAGING_READ_OK" && marker_present "PAGING_WRITE_FAULT_OK" && marker_present "PAGING_UNMAP_FAULT_OK" && marker_present "PAGING_OK"; then
+  echo "[PASS] paging map/unmap/permission/fault bookkeeping verified"
 else
   ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_evidence "$run_id" "$started_at" "$ended_at" "$qemu_status" "fail"
-  fail "paging not verified - missing PAGING_MAP_OK, PAGING_UNMAP_OK, PAGING_PERM_OK, or PAGING_OK"
+  fail "paging not verified - missing required markers"
 fi
 
 ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

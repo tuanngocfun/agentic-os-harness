@@ -21,6 +21,7 @@ static inline void enable_paging(void) {
     uint32_t cr0;
     asm volatile("mov %%cr0, %0" : "=r"(cr0));
     cr0 |= 0x80000000;
+    cr0 |= 0x00010000;
     asm volatile("mov %0, %%cr0" : : "r"(cr0));
 }
 

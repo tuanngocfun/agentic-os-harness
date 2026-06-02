@@ -41,6 +41,7 @@ USERMODE_OBJ = $(BUILD_DIR)/usermode.o
 KERNEL_OBJECTS = $(KERNEL_ENTRY_OBJ) $(ISR_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) $(STRING_OBJ) $(IDT_OBJ) $(KEYBOARD_OBJ) $(TIMER_OBJ) $(MEMORY_OBJ) $(GDT_OBJ) $(PAGING_OBJ) $(TSS_OBJ) $(SYSCALL_OBJ) $(PROCESS_OBJ) $(SCHEDULER_OBJ) $(USERMODE_OBJ) $(SHELL_OBJ)
 KERNEL_ELF = $(BUILD_DIR)/kernel.elf
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
+KERNEL_DEFINES_STAMP = $(BUILD_DIR)/kernel_defines.stamp
 OS_IMG = $(BUILD_DIR)/os.img
 
 all: guard-paths $(OS_IMG)
@@ -51,6 +52,16 @@ guard-paths:
 	@test -n "$(BUILD_DIR)" || { echo "ERROR: BUILD_DIR is empty"; exit 1; }
 	@test -n "$(OS_IMG)" || { echo "ERROR: OS_IMG is empty"; exit 1; }
 	@test "$(KERNEL_MAX_CHS_SECTORS)" = "120" || { echo "ERROR: KERNEL_MAX_CHS_SECTORS must be 120"; exit 1; }
+
+$(KERNEL_DEFINES_STAMP): guard-paths FORCE
+	@mkdir -p $(BUILD_DIR)
+	@tmp="$(KERNEL_DEFINES_STAMP).tmp"; \
+	printf '%s\n' "$(KERNEL_DEFINES)" > "$$tmp"; \
+	if [ ! -f "$@" ] || ! cmp -s "$$tmp" "$@"; then \
+		mv "$$tmp" "$@"; \
+	else \
+		rm "$$tmp"; \
+	fi
 
 $(BOOT_CONFIG): guard-paths $(KERNEL_BIN)
 	@mkdir -p $(BUILD_DIR)
@@ -79,59 +90,59 @@ $(ISR_OBJ): $(KERNEL_DIR)/isr.asm
 	@mkdir -p $(BUILD_DIR)
 	$(NASM) -f elf32 $< -o $@
 
-$(KERNEL_OBJ): $(KERNEL_DIR)/kernel.c
+$(KERNEL_OBJ): $(KERNEL_DIR)/kernel.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(VGA_OBJ): $(KERNEL_DIR)/vga.c
+$(VGA_OBJ): $(KERNEL_DIR)/vga.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(SERIAL_OBJ): $(KERNEL_DIR)/serial.c
+$(SERIAL_OBJ): $(KERNEL_DIR)/serial.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(STRING_OBJ): $(KERNEL_DIR)/string.c
+$(STRING_OBJ): $(KERNEL_DIR)/string.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(IDT_OBJ): $(KERNEL_DIR)/idt.c
+$(IDT_OBJ): $(KERNEL_DIR)/idt.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(KEYBOARD_OBJ): $(KERNEL_DIR)/keyboard.c
+$(KEYBOARD_OBJ): $(KERNEL_DIR)/keyboard.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(TIMER_OBJ): $(KERNEL_DIR)/timer.c
+$(TIMER_OBJ): $(KERNEL_DIR)/timer.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(MEMORY_OBJ): $(KERNEL_DIR)/memory.c
+$(MEMORY_OBJ): $(KERNEL_DIR)/memory.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(GDT_OBJ): $(KERNEL_DIR)/gdt.c
+$(GDT_OBJ): $(KERNEL_DIR)/gdt.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(PAGING_OBJ): $(KERNEL_DIR)/paging.c
+$(PAGING_OBJ): $(KERNEL_DIR)/paging.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(TSS_OBJ): $(KERNEL_DIR)/tss.c
+$(TSS_OBJ): $(KERNEL_DIR)/tss.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(SYSCALL_OBJ): $(KERNEL_DIR)/syscall.c
+$(SYSCALL_OBJ): $(KERNEL_DIR)/syscall.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(PROCESS_OBJ): $(KERNEL_DIR)/process.c
+$(PROCESS_OBJ): $(KERNEL_DIR)/process.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(SCHEDULER_OBJ): $(KERNEL_DIR)/scheduler.c
+$(SCHEDULER_OBJ): $(KERNEL_DIR)/scheduler.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
@@ -139,7 +150,7 @@ $(USERMODE_OBJ): $(KERNEL_DIR)/usermode.asm
 	@mkdir -p $(BUILD_DIR)
 	$(NASM) -f elf32 $< -o $@
 
-$(SHELL_OBJ): $(KERNEL_DIR)/shell.c
+$(SHELL_OBJ): $(KERNEL_DIR)/shell.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
@@ -207,4 +218,6 @@ clean: guard-paths
 
 -include $(BUILD_DIR)/*.d
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-timer clean
+FORCE:
+
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-timer clean FORCE

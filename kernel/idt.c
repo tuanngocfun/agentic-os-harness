@@ -1,4 +1,7 @@
 #include "idt.h"
+#ifdef ENABLE_PAGING_SELFTEST
+#include "paging.h"
+#endif
 #include <stdint.h>
 #include <stddef.h>
 
@@ -76,7 +79,32 @@ static void panic_puthex(uint32_t val) {
     }
 }
 
+#ifdef ENABLE_PAGING_SELFTEST
+volatile int page_fault_expected = 0;
+volatile int page_fault_caught = 0;
+volatile uint32_t page_fault_addr = 0;
+volatile uint32_t page_fault_repair_virtual = 0;
+volatile uint32_t page_fault_repair_physical = 0;
+volatile uint32_t page_fault_repair_flags = 0;
+#endif
+
 void exception_handler(uint32_t vector, uint32_t error_code) {
+#ifdef ENABLE_PAGING_SELFTEST
+    if (vector == 14 && page_fault_expected && page_fault_caught == 0) {
+        asm volatile("mov %%cr2, %0" : "=r"(page_fault_addr));
+        if (page_fault_addr == page_fault_repair_virtual) {
+            paging_map_page(page_fault_repair_virtual,
+                            page_fault_repair_physical,
+                            page_fault_repair_flags);
+            page_fault_expected = 0;
+        }
+        page_fault_caught = 1;
+        if (page_fault_addr == page_fault_repair_virtual) {
+            return;
+        }
+    }
+#endif
+
     panic_puts("KERNEL_PANIC:0x");
     panic_puthex(vector);
     panic_puts(":0x");

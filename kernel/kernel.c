@@ -157,7 +157,49 @@ void kernel_main(void) {
             serial_puts("PAGING_PERM_OK\n");
         }
 
-        if (map_ok && unmap_ok && perm_ok) {
+        page_fault_caught = 0;
+        page_fault_addr = 0;
+        paging_map_page(0x600000, 0x400000, PAGE_PRESENT);
+        volatile uint32_t *ro_ptr = (volatile uint32_t *)0x600000;
+        (void)*ro_ptr;
+        int read_ok = (page_fault_caught == 0);
+        if (read_ok) {
+            serial_puts("PAGING_READ_OK\n");
+        }
+
+        page_fault_caught = 0;
+        page_fault_addr = 0;
+        page_fault_repair_virtual = 0x600000;
+        page_fault_repair_physical = 0x400000;
+        page_fault_repair_flags = PAGE_PRESENT | PAGE_WRITABLE;
+        page_fault_expected = 1;
+        *ro_ptr = 0x12345678;
+        page_fault_expected = 0;
+        int write_fault_ok = (page_fault_caught == 1 &&
+                              page_fault_addr == 0x600000 &&
+                              *ro_ptr == 0x12345678);
+        if (write_fault_ok) {
+            serial_puts("PAGING_WRITE_FAULT_OK\n");
+        }
+        page_fault_caught = 0;
+
+        page_fault_caught = 0;
+        page_fault_addr = 0;
+        paging_unmap_page(0x600000);
+        page_fault_repair_virtual = 0x600000;
+        page_fault_repair_physical = 0x400000;
+        page_fault_repair_flags = PAGE_PRESENT | PAGE_WRITABLE;
+        page_fault_expected = 1;
+        volatile uint32_t unmap_value = *ro_ptr;
+        (void)unmap_value;
+        page_fault_expected = 0;
+        int unmap_fault_ok = (page_fault_caught == 1 && page_fault_addr == 0x600000);
+        if (unmap_fault_ok) {
+            serial_puts("PAGING_UNMAP_FAULT_OK\n");
+        }
+        page_fault_caught = 0;
+
+        if (map_ok && unmap_ok && perm_ok && read_ok && write_fault_ok && unmap_fault_ok) {
             serial_puts("PAGING_OK\n");
         } else {
             serial_puts("PAGING_FAIL\n");
