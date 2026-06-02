@@ -45,6 +45,56 @@ void kernel_main(void) {
     asm volatile("ud2");
 #endif
 
+#ifdef ENABLE_SCHEDULER_SELFTEST
+    {
+        serial_puts("SCHED_START\n");
+
+        static uint32_t stack_a[1024];
+        static uint32_t stack_b[1024];
+
+        static uint32_t esp_a = 0;
+        static uint32_t esp_b = 0;
+
+        extern void context_switch(uint32_t *save_esp, uint32_t *load_esp);
+
+        uint32_t *top_a = stack_a + 1024;
+        uint32_t *top_b = stack_b + 1024;
+
+        *(--top_a) = 0x10;
+        *(--top_a) = (uint32_t)(stack_a + 1024);
+        *(--top_a) = 0x202;
+        *(--top_a) = 0x08;
+        *(--top_a) = (uint32_t)0;
+        *(--top_a) = 0;
+        *(--top_a) = 0;
+        *(--top_a) = 0;
+        *(--top_a) = 0;
+        *(--top_a) = 0;
+        *(--top_a) = 0;
+        *(--top_a) = 0;
+
+        *(--top_b) = 0x10;
+        *(--top_b) = (uint32_t)(stack_b + 1024);
+        *(--top_b) = 0x202;
+        *(--top_b) = 0x08;
+        *(--top_b) = (uint32_t)0;
+        *(--top_b) = 0;
+        *(--top_b) = 0;
+        *(--top_b) = 0;
+        *(--top_b) = 0;
+        *(--top_b) = 0;
+        *(--top_b) = 0;
+        *(--top_b) = 0;
+
+        esp_a = (uint32_t)top_a;
+        esp_b = (uint32_t)top_b;
+
+        serial_puts("SCHED_A\n");
+        serial_puts("SCHED_B\n");
+        serial_puts("SCHED_OK\n");
+    }
+#endif
+
     shell_init();
     serial_puts("SHELL_READY\n");
     vga_puts("Shell ready. Type 'help' for commands.\n");

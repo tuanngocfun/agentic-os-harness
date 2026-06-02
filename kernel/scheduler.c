@@ -6,6 +6,7 @@
 
 static struct process *ready_queue = NULL;
 static struct process *current = NULL;
+static uint32_t schedule_count = 0;
 
 static void enqueue(struct process *proc) {
     proc->next = NULL;
@@ -31,6 +32,7 @@ static struct process *dequeue(void) {
 void scheduler_init(void) {
     ready_queue = NULL;
     current = NULL;
+    schedule_count = 0;
 }
 
 void scheduler_add(struct process *proc) {
@@ -51,10 +53,15 @@ void scheduler_schedule(void) {
 
     next->state = PROCESS_RUNNING;
     current = next;
+    schedule_count++;
 }
 
 void scheduler_tick(void) {
     scheduler_schedule();
+}
+
+uint32_t scheduler_get_count(void) {
+    return schedule_count;
 }
 
 struct process *scheduler_get_current(void) {
@@ -66,4 +73,8 @@ void scheduler_set_current(struct process *proc) {
     if (proc) {
         proc->state = PROCESS_RUNNING;
     }
+}
+
+void yield(void) {
+    scheduler_schedule();
 }

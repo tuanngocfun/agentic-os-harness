@@ -162,7 +162,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception
+test-deep: test-syscall test-exception test-scheduler
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -178,9 +178,13 @@ test-exception:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_EXCEPTION_SELFTEST
 	@bash scripts/exception_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
+test-scheduler:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_SCHEDULER_SELFTEST
+	@bash scripts/scheduler_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 clean: guard-paths
 	rm -rf $(BUILD_DIR)
 
 -include $(BUILD_DIR)/*.d
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception clean
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-scheduler clean
