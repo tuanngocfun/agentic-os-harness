@@ -11,6 +11,7 @@ QEMU_LOG="$BUILD_DIR/qemu.shell.log"
 MONITOR_LOG="$BUILD_DIR/qemu.shell.monitor.log"
 VGA_DUMP="$BUILD_DIR/vga.shell.bin"
 VGA_TEXT="$BUILD_DIR/vga.shell.txt"
+EVIDENCE_LOG="$BUILD_DIR/evidence.jsonl"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-12}"
 TASK_NAME="${TASK_NAME:-shell-runtime-test}"
 QEMU="${QEMU:-qemu-system-i386}"
@@ -18,6 +19,54 @@ QEMU="${QEMU:-qemu-system-i386}"
 fail() {
   echo "[FAIL] $*" >&2
   exit 1
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+file_bytes() {
+  wc -c < "$1" | tr -d ' '
+}
+
+file_sha256() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+write_evidence() {
+  run_id="$1"
+  started_at="$2"
+  ended_at="$3"
+  qemu_status="$4"
+  verdict="$5"
+
+  boot_bytes="missing"
+  boot_sha="missing"
+  kernel_bytes="missing"
+  kernel_sha="missing"
+  serial_sha="missing"
+  vga_sha="missing"
+
+  [ -f "$BUILD_DIR/boot.bin" ] && boot_bytes="$(file_bytes "$BUILD_DIR/boot.bin")" && boot_sha="$(file_sha256 "$BUILD_DIR/boot.bin")"
+  [ -f "$BUILD_DIR/kernel.bin" ] && kernel_bytes="$(file_bytes "$BUILD_DIR/kernel.bin")" && kernel_sha="$(file_sha256 "$BUILD_DIR/kernel.bin")"
+  [ -f "$SERIAL_LOG" ] && serial_sha="$(file_sha256 "$SERIAL_LOG")"
+  [ -f "$VGA_TEXT" ] && vga_sha="$(file_sha256 "$VGA_TEXT")"
+
+  boot_ok=false
+  kernel_ok=false
+  shell_ready=false
+  help_rendered=false
+  marker_present "BOOT_OK" && boot_ok=true
+  marker_present "KERNEL_INIT_OK" && kernel_ok=true
+  marker_present "SHELL_READY" && shell_ready=true
+  grep -Fq "Available commands:" "$VGA_TEXT" 2>/dev/null && help_rendered=true
+
+  task_json="$(json_escape "$TASK_NAME")"
+  printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","vga_text_sha256":"%s","markers":{"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"SHELL_READY":%s},"vga_checks":{"help_rendered":%s},"verdict":"%s"}\n' \
+    "$run_id" "$task_json" "$started_at" "$ended_at" "$qemu_status" \
+    "$boot_bytes" "$boot_sha" "$kernel_bytes" "$kernel_sha" \
+    "$serial_sha" "$vga_sha" \
+    "$boot_ok" "$kernel_ok" "$shell_ready" "$help_rendered" "$verdict" >> "$EVIDENCE_LOG"
 }
 
 clean_serial() {
@@ -93,6 +142,9 @@ mkdir -p "$BUILD_DIR"
 : > "$MONITOR_LOG"
 : > "$VGA_TEXT"
 
+run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 coproc QEMU_MON {
   "$QEMU" \
     -drive file="$OS_IMG",format=raw \
@@ -138,6 +190,9 @@ dump_vga_text "$VGA_DUMP" "$VGA_TEXT"
 
 grep -Fq "Shell ready. Type 'help' for commands." "$VGA_TEXT" || fail "VGA shell banner missing"
 grep -Fq "Available commands:" "$VGA_TEXT" || fail "help command did not render"
+
+ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+write_evidence "$run_id" "$started_at" "$ended_at" "0" "pass"
 
 echo "[PASS] BOOT_OK"
 echo "[PASS] KERNEL_INIT_OK"
