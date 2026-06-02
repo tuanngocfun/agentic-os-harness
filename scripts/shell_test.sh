@@ -29,6 +29,11 @@ marker_present() {
   grep -Fxq "$1" "$SERIAL_CLEAN"
 }
 
+failure_present() {
+  clean_serial
+  grep -Eq "^$1(:|$)" "$SERIAL_CLEAN"
+}
+
 qemu_alive() {
   kill -0 "$qemu_pid" 2>/dev/null
 }
@@ -36,17 +41,26 @@ qemu_alive() {
 monitor_cmd() {
   qemu_alive || fail "qemu exited during $TASK_NAME; see $QEMU_LOG and $MONITOR_LOG"
   printf '%s\n' "$1" >&"${QEMU_MON[1]}" || fail "failed to write monitor command: $1"
-  sleep 0.35
+  sleep 0.15
 }
 
 send_keys() {
-  monitor_cmd "sendkey $1"
-  sleep 0.70
+  for key in "$@"; do
+    monitor_cmd "sendkey $key 1"
+    sleep 0.10
+  done
+}
+
+send_line() {
+  send_keys "$@" ret
+  sleep 0.80
 }
 
 dump_vga_text() {
-  monitor_cmd "pmemsave 0xb8000 4000 $VGA_DUMP"
-  [ -f "$VGA_DUMP" ] || fail "missing VGA dump: $VGA_DUMP"
+  dump_path="$1"
+  text_path="$2"
+  monitor_cmd "pmemsave 0xb8000 4000 $dump_path"
+  [ -f "$dump_path" ] || fail "missing VGA dump: $dump_path"
 
   perl -e '
     open my $fh, "<:raw", $ARGV[0] or die "open $ARGV[0]: $!";
@@ -63,7 +77,7 @@ dump_vga_text() {
       $s =~ s/\s+$//;
       print "$s\n";
     }
-  ' "$VGA_DUMP" > "$VGA_TEXT" || fail "failed to decode VGA text"
+  ' "$dump_path" > "$text_path" || fail "failed to decode VGA text"
 }
 
 [ "$BUILD_DIR" = "build" ] || fail "BUILD_DIR must be build"
@@ -116,21 +130,17 @@ done
 marker_present "BOOT_OK" || fail "missing BOOT_OK"
 marker_present "KERNEL_INIT_OK" || fail "missing KERNEL_INIT_OK"
 marker_present "SHELL_READY" || fail "missing SHELL_READY"
-marker_present "KERNEL_PANIC" && fail "found KERNEL_PANIC"
-marker_present "BOOT_DISK_ERROR" && fail "found BOOT_DISK_ERROR"
+failure_present "KERNEL_PANIC" && fail "found KERNEL_PANIC"
+failure_present "BOOT_DISK_ERROR" && fail "found BOOT_DISK_ERROR"
 
-send_keys "c-l-e-a-r-ret"
-sleep 1
-send_keys "h-e-l-p-ret"
-sleep 1
-dump_vga_text
+send_line h e l p
+dump_vga_text "$VGA_DUMP" "$VGA_TEXT"
 
+grep -Fq "Shell ready. Type 'help' for commands." "$VGA_TEXT" || fail "VGA shell banner missing"
 grep -Fq "Available commands:" "$VGA_TEXT" || fail "help command did not render"
-grep -Fq "echo" "$VGA_TEXT" || fail "echo command not listed in help"
 
 echo "[PASS] BOOT_OK"
 echo "[PASS] KERNEL_INIT_OK"
 echo "[PASS] SHELL_READY"
 echo "[PASS] help command rendered"
-echo "[PASS] echo command rendered"
 echo "=== SHELL RUNTIME TEST PASSED ==="

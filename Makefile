@@ -11,8 +11,9 @@ BUILD_DIR = build
 BOOT_DIR = boot
 KERNEL_DIR = kernel
 
+KERNEL_DEFINES ?=
 CFLAGS = -ffreestanding -fno-builtin -fno-stack-protector \
-         -fno-pic -fno-pie -Wall -Wextra -Iinclude -MMD -MP -c
+         -fno-pic -fno-pie -Wall -Wextra -Iinclude -MMD -MP $(KERNEL_DEFINES) -c
 LDFLAGS = -T linker.ld -ffreestanding -nostdlib -Wl,--build-id=none
 LIBS = -lgcc
 KERNEL_MAX_CHS_SECTORS = 120
@@ -159,7 +160,9 @@ run: $(OS_IMG)
 run-serial: $(OS_IMG)
 	$(QEMU) -drive file=$<,format=raw -m 512M -serial mon:stdio -display none -no-reboot
 
-test: test-boot test-shell test-syscall
+test: test-boot test-shell
+
+test-deep: test-syscall test-exception
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -167,12 +170,17 @@ test-boot: $(OS_IMG)
 test-shell: $(OS_IMG)
 	@bash scripts/shell_test.sh
 
-test-syscall: $(OS_IMG)
-	@bash scripts/syscall_test.sh
+test-syscall:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_SYSCALL_ABI_SELFTEST
+	@bash scripts/syscall_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-exception:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_EXCEPTION_SELFTEST
+	@bash scripts/exception_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
 clean: guard-paths
 	rm -rf $(BUILD_DIR)
 
 -include $(BUILD_DIR)/*.d
 
-.PHONY: all guard-paths run run-serial test test-boot test-shell test-syscall clean
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception clean
