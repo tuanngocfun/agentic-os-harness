@@ -15,7 +15,7 @@ Proven now:
 - QEMU boot test proves `BOOT_OK`, `KERNEL_INIT_OK`, and `SHELL_READY`.
 - Shell runtime test proves keyboard input, shell dispatch, and VGA output for `help`.
 - Syscall ABI selftest proves the current `int 0x80` register contract when `make test-syscall` passes.
-- Exception selftest proves invalid-opcode panic evidence as `KERNEL_PANIC:<vector>:<code>` when `make test-exception` passes.
+- Exception selftest proves divide-by-zero, invalid-opcode, GPF, and page-fault panic evidence as `KERNEL_PANIC:<vector>:<code>` when `make test-exception`, `make test-exception-div0`, `make test-exception-gpf`, and `make test-exception-pagefault` pass.
 - Scheduler selftest proves only queue rotation through `scheduler_tick()` and `scheduler_get_current()`, not context switching.
 - Paging selftest proves only map/unmap bookkeeping plus writable access for one mapped page, not protection or isolation.
 

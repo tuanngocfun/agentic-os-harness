@@ -85,6 +85,9 @@ Deep gates are explicit and may rebuild with selftest defines:
 - `make test-deep`
 - `make test-syscall`
 - `make test-exception`
+- `make test-exception-div0`
+- `make test-exception-gpf`
+- `make test-exception-pagefault`
 - `make test-scheduler`
 - `make test-paging`
 

@@ -42,7 +42,7 @@ claim_status:
   memory_info: "stubbed_not_claimable"
   paging: "partial_claimable_map_unmap_bookkeeping_test"
   syscall: "claimable_with_syscall_test"
-  exception_panic: "claimable_with_exception_test"
+  exception_panic: "claimable_with_exception_test_suite"
   process: "not_claimable"
   scheduler: "partial_claimable_queue_rotation_test"
   user_mode: "not_claimable_no_ring3_transition_test"

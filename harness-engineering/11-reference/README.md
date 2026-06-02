@@ -113,7 +113,7 @@ Markers:
 Runtime evidence:
 - Shell: `scripts/shell_test.sh` must prove keyboard input, command dispatch, and VGA output for `help`. Argument-bearing commands such as `echo` need a separate stable input proof.
 - Syscall: `scripts/syscall_test.sh` proves only the current `int 0x80` ABI contract.
-- Exception panic: `scripts/exception_test.sh` proves only the invalid-opcode structured panic path.
+- Exception panic: `scripts/exception_test.sh` proves divide-by-zero, invalid-opcode, GPF, and page-fault structured panic paths via `KERNEL_PANIC:<vector>:<code>` markers.
 - Scheduler: `scripts/scheduler_test.sh` proves only ready-queue rotation, not context switching or task execution.
 - Paging: `scripts/paging_test.sh` proves only map/unmap bookkeeping plus writable access for one page, not protection or isolation.
 - Process/user mode: scaffold only until dedicated runtime tests exist.

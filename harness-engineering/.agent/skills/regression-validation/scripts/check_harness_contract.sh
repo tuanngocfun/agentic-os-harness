@@ -73,7 +73,8 @@ else
   require_grep 'syscall:[[:space:]]*"not_claimable_syscall_abi_unproven"' "harness_profile.yaml"
 fi
 if grep -q 'ENABLE_EXCEPTION_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-exception' "$REPO_ROOT/Makefile" && grep -q 'KERNEL_PANIC:0x00000006:0x00000000' "$REPO_ROOT/scripts/exception_test.sh"; then
-  require_grep 'exception_panic:[[:space:]]*"claimable_with_exception_test"' "harness_profile.yaml"
+  require_grep 'exception_panic:[[:space:]]*"claimable_with_exception_test_suite"' "harness_profile.yaml"
+  require_grep 'test-deep:.*test-exception-div0.*test-exception-gpf.*test-exception-pagefault' "$REPO_ROOT/Makefile"
 fi
 if grep -q 'ENABLE_SCHEDULER_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-scheduler' "$REPO_ROOT/Makefile" && grep -q 'SCHED_QUEUE_OK' "$REPO_ROOT/scripts/scheduler_test.sh"; then
   require_grep 'scheduler:[[:space:]]*"partial_claimable_queue_rotation_test"' "harness_profile.yaml"
@@ -118,6 +119,7 @@ if command -v rg >/dev/null 2>&1; then
   rg -n 'an toàn 100[%]|isolated[[:space:]]+completely' . --glob '!**/06-validation/**' --glob '!**/11-reference/**' && fail "absolute safety claim found" || pass "no absolute safety claim"
   rg -n 'stat -c%s|grep -q "\$marker"|> "\$SERIAL_LOG" 2>&1 \|\| true|-serial mon:stdio.*>.*build/serial[.]log' . --glob '!**/06-validation/**' --glob '!**/11-reference/**' && fail "weak parser/QEMU evidence pattern found" || pass "no weak parser/QEMU evidence pattern"
   rg -n 'echo "\[PASS\].*exception.*"|EXCEPTION PANIC TEST PASSED' "$REPO_ROOT/scripts/exception_test.sh" | rg -v 'panic_present|structured|===' && fail "exception test can pass without proving a fault" || pass "exception test requires structured panic evidence"
+  rg -n 'int [$]0x0D' "$REPO_ROOT/kernel/kernel.c" && fail "GPF selftest uses software interrupt instead of protection violation" || pass "GPF selftest does not use software interrupt"
   rg -n 'echo "\[PASS\].*echo|echo command not listed in help|echo ok command returned ok' "$REPO_ROOT/scripts/shell_test.sh" && fail "shell test claims echo proof through flaky monitor input" || pass "shell test does not overclaim echo"
   rg -n 'context switch verified|SCHED_A|SCHED_B' "$REPO_ROOT/scripts/scheduler_test.sh" && fail "scheduler test overclaims context switch or printed-task markers" || pass "scheduler test requires queue-rotation evidence"
   rg -n 'no paging test markers|paging semantics verified' "$REPO_ROOT/scripts/paging_test.sh" && fail "paging test can pass without paging proof" || pass "paging test requires map/unmap evidence"

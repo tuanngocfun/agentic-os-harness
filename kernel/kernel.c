@@ -50,6 +50,27 @@ void kernel_main(void) {
     asm volatile("ud2");
 #endif
 
+#ifdef ENABLE_EXCEPTION_DIV0_SELFTEST
+    asm volatile("xor %%eax,%%eax\n\tdiv %%eax" ::: "eax");
+#endif
+
+#ifdef ENABLE_EXCEPTION_GPF_SELFTEST
+    asm volatile(
+        "mov $0x28, %%ax\n\t"
+        "mov %%ax, %%ds"
+        :
+        :
+        : "ax"
+    );
+#endif
+
+#ifdef ENABLE_EXCEPTION_PAGEFAULT_SELFTEST
+    {
+        volatile uint32_t *ptr = (volatile uint32_t *)0xDEAD0000;
+        (void)*ptr;
+    }
+#endif
+
 #ifdef ENABLE_SCHEDULER_SELFTEST
     {
         serial_puts("SCHED_START\n");

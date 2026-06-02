@@ -162,7 +162,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception test-scheduler test-paging
+test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -176,7 +176,19 @@ test-syscall:
 
 test-exception:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_EXCEPTION_SELFTEST
-	@bash scripts/exception_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+	@EXCEPTION_VECTOR=6 bash scripts/exception_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-exception-div0:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_EXCEPTION_DIV0_SELFTEST
+	@EXCEPTION_VECTOR=0 bash scripts/exception_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-exception-gpf:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_EXCEPTION_GPF_SELFTEST
+	@EXCEPTION_VECTOR=13 bash scripts/exception_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-exception-pagefault:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_EXCEPTION_PAGEFAULT_SELFTEST
+	@EXCEPTION_VECTOR=14 bash scripts/exception_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
 test-scheduler:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_SCHEDULER_SELFTEST
@@ -191,4 +203,4 @@ clean: guard-paths
 
 -include $(BUILD_DIR)/*.d
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-scheduler test-paging clean
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging clean
