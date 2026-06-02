@@ -55,22 +55,21 @@ struct process *process_create(uint32_t entry_point, int is_user) {
         *(--stack_top) = 0x202;
         *(--stack_top) = 0x1B;
         *(--stack_top) = entry_point;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
     } else {
-        *(--stack_top) = 0x10;
-        *(--stack_top) = (uint32_t)(proc->kernel_stack + (KERNEL_STACK_SIZE / sizeof(uint32_t)));
-        *(--stack_top) = 0x202;
-        *(--stack_top) = 0x08;
         *(--stack_top) = entry_point;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
+        *(--stack_top) = 0;
     }
-
-    *(--stack_top) = 0;
-    *(--stack_top) = 0;
-    *(--stack_top) = 0;
-    *(--stack_top) = 0;
-    *(--stack_top) = 0;
-    *(--stack_top) = 0;
-    *(--stack_top) = 0;
-    *(--stack_top) = 0;
 
     proc->esp = (uint32_t)stack_top;
     proc->ebp = 0;

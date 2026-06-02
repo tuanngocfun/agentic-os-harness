@@ -14,8 +14,24 @@
 #include "shell.h"
 
 #ifdef ENABLE_SCHEDULER_SELFTEST
-static void scheduler_selftest_task_a(void) {}
-static void scheduler_selftest_task_b(void) {}
+static volatile int task_a_ran = 0;
+static volatile int task_b_ran = 0;
+
+static void scheduler_selftest_task_a(void) {
+    task_a_ran = 1;
+    serial_puts("SCHED_A\n");
+    yield();
+    serial_puts("SCHED_A_AGAIN\n");
+    while (1) { asm volatile("hlt"); }
+}
+
+static void scheduler_selftest_task_b(void) {
+    task_b_ran = 1;
+    serial_puts("SCHED_B\n");
+    yield();
+    serial_puts("SCHED_B_AGAIN\n");
+    while (1) { asm volatile("hlt"); }
+}
 #endif
 
 void kernel_main(void) {
@@ -122,6 +138,11 @@ void kernel_main(void) {
                 serial_puts("SCHED_QUEUE_FAIL\n");
             }
 
+            if (task_a->esp != 0 && task_b->esp != 0) {
+                serial_puts("SCHED_CONTEXT_OK\n");
+            } else {
+                serial_puts("SCHED_CONTEXT_FAIL\n");
+            }
         }
 
         scheduler_init();

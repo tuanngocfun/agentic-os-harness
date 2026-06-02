@@ -51,18 +51,23 @@ write_evidence() {
   kernel_ok=false
   shell_ready=false
   sched_queue_ok=false
+  sched_context_ok=false
   sched_queue_fail=false
+  sched_context_fail=false
   marker_present "BOOT_OK" && boot_ok=true
   marker_present "KERNEL_INIT_OK" && kernel_ok=true
   marker_present "SHELL_READY" && shell_ready=true
   marker_present "SCHED_QUEUE_OK" && sched_queue_ok=true
+  marker_present "SCHED_CONTEXT_OK" && sched_context_ok=true
   marker_present "SCHED_QUEUE_FAIL" && sched_queue_fail=true
+  marker_present "SCHED_CONTEXT_FAIL" && sched_context_fail=true
 
   task_json="$(json_escape "$TASK_NAME")"
-  printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","markers":{"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"SHELL_READY":%s},"subsystem":{"SCHED_QUEUE_OK":%s,"SCHED_QUEUE_FAIL":%s},"verdict":"%s"}\n' \
+  printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","markers":{"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"SHELL_READY":%s},"subsystem":{"SCHED_QUEUE_OK":%s,"SCHED_CONTEXT_OK":%s,"SCHED_QUEUE_FAIL":%s,"SCHED_CONTEXT_FAIL":%s},"verdict":"%s"}\n' \
     "$run_id" "$task_json" "$started_at" "$ended_at" "$qemu_status" \
     "$boot_bytes" "$boot_sha" "$kernel_bytes" "$kernel_sha" "$serial_sha" \
-    "$boot_ok" "$kernel_ok" "$shell_ready" "$sched_queue_ok" "$sched_queue_fail" "$verdict" >> "$EVIDENCE_LOG"
+    "$boot_ok" "$kernel_ok" "$shell_ready" \
+    "$sched_queue_ok" "$sched_context_ok" "$sched_queue_fail" "$sched_context_fail" "$verdict" >> "$EVIDENCE_LOG"
 }
 
 clean_serial() {
@@ -139,6 +144,19 @@ if ! marker_present "SCHED_QUEUE_OK"; then
   fail "scheduler queue rotation not verified - missing SCHED_QUEUE_OK"
 fi
 echo "[PASS] scheduler queue rotation verified"
+
+if marker_present "SCHED_CONTEXT_FAIL"; then
+  ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  write_evidence "$run_id" "$started_at" "$ended_at" "$qemu_status" "fail"
+  fail "scheduler context switch reported SCHED_CONTEXT_FAIL"
+fi
+
+if ! marker_present "SCHED_CONTEXT_OK"; then
+  ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  write_evidence "$run_id" "$started_at" "$ended_at" "$qemu_status" "fail"
+  fail "scheduler context switch not verified - missing SCHED_CONTEXT_OK"
+fi
+echo "[PASS] scheduler context switch verified"
 
 ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 write_evidence "$run_id" "$started_at" "$ended_at" "$qemu_status" "pass"

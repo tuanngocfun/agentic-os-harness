@@ -4,9 +4,12 @@
 #include <stdint.h>
 #include <stddef.h>
 
+extern void context_switch(uint32_t *save_esp, uint32_t *load_esp);
+
 static struct process *ready_queue = NULL;
 static struct process *current = NULL;
 static uint32_t schedule_count = 0;
+static int scheduler_initialized = 0;
 
 static void enqueue(struct process *proc) {
     proc->next = NULL;
@@ -33,6 +36,7 @@ void scheduler_init(void) {
     ready_queue = NULL;
     current = NULL;
     schedule_count = 0;
+    scheduler_initialized = 1;
 }
 
 void scheduler_add(struct process *proc) {
@@ -57,6 +61,7 @@ void scheduler_schedule(void) {
 }
 
 void scheduler_tick(void) {
+    if (!scheduler_initialized) return;
     scheduler_schedule();
 }
 
@@ -76,5 +81,12 @@ void scheduler_set_current(struct process *proc) {
 }
 
 void yield(void) {
+    if (!scheduler_initialized) return;
+
+    struct process *prev = current;
     scheduler_schedule();
+
+    if (prev && prev != current && prev->state == PROCESS_READY) {
+        context_switch(&prev->esp, &current->esp);
+    }
 }
