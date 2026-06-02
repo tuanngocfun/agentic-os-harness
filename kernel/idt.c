@@ -58,6 +58,36 @@ void isr_handler(uint32_t interrupt) {
     outb(0x20, 0x20);
 }
 
+static void panic_putc(char c) {
+    while (!(inb(0x3F8 + 5) & 0x20));
+    outb(0x3F8, c);
+}
+
+static void panic_puts(const char *str) {
+    while (*str) {
+        panic_putc(*str++);
+    }
+}
+
+static void panic_puthex(uint32_t val) {
+    const char hex[] = "0123456789ABCDEF";
+    for (int i = 28; i >= 0; i -= 4) {
+        panic_putc(hex[(val >> i) & 0xF]);
+    }
+}
+
+void exception_handler(uint32_t vector, uint32_t error_code) {
+    panic_puts("KERNEL_PANIC:0x");
+    panic_puthex(vector);
+    panic_puts(":0x");
+    panic_puthex(error_code);
+    panic_puts("\n");
+
+    while (1) {
+        asm volatile("cli; hlt");
+    }
+}
+
 void idt_init(void) {
     idtp.limit = sizeof(idt) - 1;
     idtp.base = (uint32_t)&idt;
@@ -68,8 +98,17 @@ void idt_init(void) {
 
     pic_remap();
 
+    extern void isr_stub_0(void);
+    extern void isr_stub_6(void);
+    extern void isr_stub_13(void);
+    extern void isr_stub_14(void);
     extern void isr_stub_32(void);
     extern void isr_stub_33(void);
+
+    idt_set_gate(0, (uint32_t)isr_stub_0, 0x08, 0x8E);
+    idt_set_gate(6, (uint32_t)isr_stub_6, 0x08, 0x8E);
+    idt_set_gate(13, (uint32_t)isr_stub_13, 0x08, 0x8E);
+    idt_set_gate(14, (uint32_t)isr_stub_14, 0x08, 0x8E);
     idt_set_gate(32, (uint32_t)isr_stub_32, 0x08, 0x8E);
     idt_set_gate(33, (uint32_t)isr_stub_33, 0x08, 0x8E);
 

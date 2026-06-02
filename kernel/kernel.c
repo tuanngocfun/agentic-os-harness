@@ -29,6 +29,7 @@ void kernel_main(void) {
     tss_init();
     syscall_init();
 
+#ifdef ENABLE_SYSCALL_ABI_SELFTEST
     {
         uint32_t result;
         asm volatile(
@@ -38,6 +39,11 @@ void kernel_main(void) {
         );
         (void)result;
     }
+#endif
+
+#ifdef ENABLE_EXCEPTION_SELFTEST
+    asm volatile("ud2");
+#endif
 
     shell_init();
     serial_puts("SHELL_READY\n");
