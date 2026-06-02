@@ -159,7 +159,7 @@ run: $(OS_IMG)
 run-serial: $(OS_IMG)
 	$(QEMU) -drive file=$<,format=raw -m 512M -serial mon:stdio -display none -no-reboot
 
-test: test-boot test-shell
+test: test-boot test-shell test-syscall
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -167,9 +167,12 @@ test-boot: $(OS_IMG)
 test-shell: $(OS_IMG)
 	@bash scripts/shell_test.sh
 
+test-syscall: $(OS_IMG)
+	@bash scripts/syscall_test.sh
+
 clean: guard-paths
 	rm -rf $(BUILD_DIR)
 
 -include $(BUILD_DIR)/*.d
 
-.PHONY: all guard-paths run run-serial test test-boot test-shell clean
+.PHONY: all guard-paths run run-serial test test-boot test-shell test-syscall clean

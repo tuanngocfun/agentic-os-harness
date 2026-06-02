@@ -30,20 +30,30 @@ global isr_stub_128
 isr_stub_128:
     push ebp
     mov ebp, esp
+    sub esp, 4
+
     push ebx
     push ecx
     push edx
-
-    push edi
     push esi
+    push edi
+
     push edx
     push ecx
+    push ebx
     push eax
     call syscall_handler
-    add esp, 20
+    add esp, 16
 
+    mov [ebp - 4], eax
+
+    pop edi
+    pop esi
     pop edx
     pop ecx
     pop ebx
+
+    mov eax, [ebp - 4]
+    mov esp, ebp
     pop ebp
     iretd

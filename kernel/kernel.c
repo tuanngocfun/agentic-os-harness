@@ -13,13 +13,6 @@
 #include "scheduler.h"
 #include "shell.h"
 
-static void user_task(void) {
-    while (1) {
-        asm volatile("int $0x80" : : "a"(1), "b"((uint32_t)"U"));
-        for (volatile int i = 0; i < 1000000; i++);
-    }
-}
-
 void kernel_main(void) {
     serial_init();
     serial_puts("KERNEL_INIT_OK\n");
@@ -36,12 +29,14 @@ void kernel_main(void) {
     tss_init();
     syscall_init();
 
-    process_init();
-    scheduler_init();
-
-    struct process *p1 = process_create((uint32_t)user_task, 0);
-    if (p1) {
-        scheduler_add(p1);
+    {
+        uint32_t result;
+        asm volatile(
+            "int $0x80"
+            : "=a"(result)
+            : "a"(6), "b"(0x11111111), "c"(0x22222222), "d"(0x33333333)
+        );
+        (void)result;
     }
 
     shell_init();

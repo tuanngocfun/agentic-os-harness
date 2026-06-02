@@ -1,0 +1,138 @@
+profile_version: "2026-06-02"
+profile_name: "mimo-v2.5pro-os-harness-profile"
+project_phase: "boot_to_shell_proven_advanced_core_scaffold"
+source_of_truth: true
+
+boot_profile:
+  loader: "phase1_track_rolling_chs"
+  kernel_sector_limit: 120
+  kernel_load_address: "0x1000"
+  artifacts:
+    - "build/boot.bin"
+    - "build/boot_config.inc"
+    - "build/kernel.elf"
+    - "build/kernel.bin"
+    - "build/os.img"
+
+markers:
+  required_current:
+    - "BOOT_OK"
+    - "KERNEL_INIT_OK"
+    - "SHELL_READY"
+  optional:
+    - "TESTS_PASS"
+  failure:
+    - "BOOT_DISK_ERROR"
+    - "KERNEL_PANIC"
+
+claim_status:
+  bootloader: "claimable_with_make_test"
+  protected_mode_entry: "claimable_with_make_test"
+  serial_markers: "claimable_with_make_test"
+  keyboard_irq: "claimable_with_shell_runtime_test"
+  shell_help_echo: "claimable_with_shell_runtime_test"
+  timer_ticks: "partial_not_claimable_without_runtime_assertion"
+  memory_info: "stubbed_not_claimable"
+  paging: "not_claimable"
+  syscall: "claimable_with_syscall_test"
+  process: "not_claimable"
+  scheduler: "not_claimable_no_timer_driven_context_switch"
+  user_mode: "not_claimable_no_ring3_transition_test"
+  filesystem: "not_started"
+  networking: "not_started"
+
+fast_gates:
+  - "make all"
+  - "make test"
+  - "bash harness-engineering/.agent/skills/regression-validation/scripts/check_harness_contract.sh"
+  - "bash harness-engineering/.agent/skills/git-change-management/scripts/git_preflight.sh"
+  - "git diff --check"
+
+deep_gates:
+  - "syscall_abi_proof"
+  - "exception_panic_markers"
+  - "page_fault_negative_test"
+  - "scheduler_tick_context_switch_proof"
+  - "paging_map_unmap_invalidation_test"
+  - "shell_input_fuzz_or_mutation_check"
+
+routes:
+  harness_only:
+    allowed_paths:
+      - "AGENTS.md"
+      - "harness-engineering/"
+      - "scripts/*test*.sh"
+    required_gates:
+      - "check_harness_contract"
+      - "git_preflight"
+  bootloader:
+    allowed_paths:
+      - "boot/"
+      - "Makefile"
+      - "linker.ld"
+      - "scripts/boot_test.sh"
+      - "harness-engineering/03-os-harness-config/"
+    required_gates:
+      - "make all"
+      - "make test"
+      - "sector_count_check"
+      - "early_qemu_exit_check"
+  shell_runtime:
+    allowed_paths:
+      - "kernel/shell.c"
+      - "kernel/keyboard.c"
+      - "kernel/vga.c"
+      - "include/shell.h"
+      - "include/keyboard.h"
+      - "include/vga.h"
+      - "scripts/shell_test.sh"
+    required_gates:
+      - "make test"
+      - "vga_shell_text_check"
+  advanced_core:
+    allowed_paths:
+      - "kernel/idt.c"
+      - "kernel/isr.asm"
+      - "kernel/timer.c"
+      - "kernel/syscall.c"
+      - "kernel/process.c"
+      - "kernel/scheduler.c"
+      - "kernel/paging.c"
+      - "kernel/tss.c"
+      - "kernel/usermode.asm"
+      - "include/"
+      - "scripts/"
+    required_gates:
+      - "make all"
+      - "make test"
+      - "targeted_runtime_test_for_claimed_subsystem"
+      - "panic_or_fault_evidence_for_negative_paths"
+
+mimo_next_tasks:
+  - id: "syscall-abi-proof"
+    priority: "P0"
+    success: "A runtime gate proves int 0x80 register arguments and return value."
+  - id: "exception-panic-path"
+    priority: "P0"
+    success: "Divide-by-zero, invalid opcode, GPF, and page fault emit structured KERNEL_PANIC evidence."
+  - id: "scheduler-truth"
+    priority: "P1"
+    success: "Timer-driven scheduler path proves at least two runnable contexts switch predictably."
+  - id: "paging-semantics"
+    priority: "P1"
+    success: "Page table allocation, map/unmap, permission bits, and invalidation have targeted tests."
+  - id: "evidence-unification"
+    priority: "P1"
+    success: "Boot and shell runtime tests append machine-readable evidence to one JSONL stream."
+
+forbidden_next_breadth:
+  - "filesystem"
+  - "networking"
+  - "more_shell_commands_without_tests"
+  - "graphics_mode"
+  - "marketing_docs_claiming_advanced_core_complete"
+
+source_authority:
+  - "harness-engineering/13-agent-routing-and-risk/README.md"
+  - "harness-engineering/06-validation/README.md"
+  - "harness-engineering/11-reference/README.md"

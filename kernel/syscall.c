@@ -2,11 +2,8 @@
 #include "vga.h"
 #include "keyboard.h"
 #include "timer.h"
+#include "serial.h"
 #include <stdint.h>
-
-static inline void outb(uint16_t port, uint8_t val) {
-    asm volatile("outb %0, %1" : : "a"(val), "Nd"(port));
-}
 
 void syscall_init(void) {
     extern void isr_stub_128(void);
@@ -15,9 +12,6 @@ void syscall_init(void) {
 }
 
 uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
-    (void)arg2;
-    (void)arg3;
-
     switch (syscall_num) {
         case SYS_PUTS:
             vga_puts((const char *)arg1);
@@ -29,6 +23,17 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
             return 0;
         case SYS_UPTIME:
             return timer_get_ticks();
+        case SYS_ECHO:
+            return arg1;
+        case SYS_TEST_ABI:
+            serial_puts("SYSCALL_ABI_OK:");
+            if (arg1 == 0x11111111 && arg2 == 0x22222222 && arg3 == 0x33333333) {
+                serial_puts("ARGS_OK");
+            } else {
+                serial_puts("ARGS_FAIL");
+            }
+            serial_puts("\n");
+            return 0xDEADBEEF;
         default:
             return (uint32_t)-1;
     }
