@@ -44,7 +44,7 @@ claim_status:
   syscall: "claimable_with_syscall_test"
   exception_panic: "claimable_with_exception_test_suite"
   process: "not_claimable"
-  scheduler: "partial_claimable_queue_rotation_test"
+  scheduler: "claimable_with_scheduler_test"
   user_mode: "not_claimable_no_ring3_transition_test"
   filesystem: "not_started"
   networking: "not_started"

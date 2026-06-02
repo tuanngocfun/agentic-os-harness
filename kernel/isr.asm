@@ -6,6 +6,8 @@ extern keyboard_handler
 extern timer_handler
 extern syscall_handler
 extern exception_handler
+extern scheduler_tick
+extern scheduler_get_current_esp_ptr
 
 %macro ISR_NOERRCODE 1
 global isr_stub_%1
@@ -41,10 +43,20 @@ ISR_ERRCODE 14
 global isr_stub_32
 isr_stub_32:
     pusha
+
+    call scheduler_get_current_esp_ptr
+    test eax, eax
+    jz .tick_only
+    mov [eax], esp
+
+.tick_only:
     call timer_handler
+    call scheduler_tick
+
     push dword 32
     call isr_handler
     add esp, 4
+
     popa
     iretd
 
