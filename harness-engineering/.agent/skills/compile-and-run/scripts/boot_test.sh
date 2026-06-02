@@ -10,7 +10,7 @@ SERIAL_CLEAN="$BUILD_DIR/serial.clean.log"
 QEMU_LOG="$BUILD_DIR/qemu.log"
 EVIDENCE_LOG="$BUILD_DIR/evidence.jsonl"
 LOCK_DIR="$BUILD_DIR/.boot_test.lock"
-TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-30}"
+TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-5}"
 TASK_NAME="${TASK_NAME:-boot-test}"
 QEMU="${QEMU:-qemu-system-i386}"
 ALLOW_QEMU_EXIT="${ALLOW_QEMU_EXIT:-0}"
@@ -34,6 +34,10 @@ file_sha256() {
 
 marker_present() {
   grep -Fxq "$1" "$SERIAL_CLEAN"
+}
+
+failure_present() {
+  grep -Eq "^$1(:|$)" "$SERIAL_CLEAN"
 }
 
 write_evidence() {
@@ -63,8 +67,8 @@ write_evidence() {
   marker_present "BOOT_OK" && boot_ok=true
   marker_present "KERNEL_INIT_OK" && kernel_ok=true
   marker_present "SHELL_READY" && shell_ready=true
-  marker_present "BOOT_DISK_ERROR" && boot_disk_error=true
-  marker_present "KERNEL_PANIC" && kernel_panic=true
+  failure_present "BOOT_DISK_ERROR" && boot_disk_error=true
+  failure_present "KERNEL_PANIC" && kernel_panic=true
 
   task_json="$(json_escape "$TASK_NAME")"
   printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","sector_count":{"kernel_sectors":"%s","phase1_chs_limit":120},"markers":{"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"SHELL_READY":%s,"BOOT_DISK_ERROR":%s,"KERNEL_PANIC":%s},"safety":{"os_img":"%s","monitor_none":true,"nic_none":true,"serial_file":true},"verdict":"%s"}\n' \
@@ -133,7 +137,7 @@ for marker in BOOT_OK KERNEL_INIT_OK SHELL_READY; do
 done
 
 for marker in BOOT_DISK_ERROR KERNEL_PANIC; do
-  if marker_present "$marker"; then
+  if failure_present "$marker"; then
     echo "[FAIL] found $marker"
     pass=false
   fi

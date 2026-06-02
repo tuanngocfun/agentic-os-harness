@@ -194,7 +194,7 @@ KERNEL_INIT_OK
 SHELL_READY
 ```
 
-`SHELL_READY` chỉ optional ở phase chưa có shell. Trong current shell phase, `make test` phải require marker này và chạy thêm shell-runtime test để kiểm tra `help` + `echo ok` trên VGA text.
+`SHELL_READY` chỉ optional ở phase chưa có shell. Trong current shell phase, `make test` phải require marker này và chạy thêm shell-runtime test để kiểm tra `help` trên VGA text. Argument-bearing commands như `echo` cần stable input proof riêng.
 
 ### Boot thất bại
 

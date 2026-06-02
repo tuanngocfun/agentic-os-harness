@@ -24,6 +24,8 @@ Harness engineering documentation for building an x86 bare metal operating syste
 10-implementation-checklist/ ← Phase checklist for buildout
 11-reference/             ← Anti-patterns, glossary, source map
 12-git-change-management/ ← Git workflow, branch, diff, staging, and handoff gates
+13-agent-routing-and-risk/ ← Claim-aware MiMo routing, progress rating, next work order
+harness_profile.yaml       ← Single source of truth for phase, markers, claims, gates
 llms.txt                  ← Root discovery index for agents
 .agent/skills/            ← Executable project-scoped skills
 ```
@@ -54,6 +56,8 @@ llms.txt                  ← Root discovery index for agents
 12. `09-safety-and-security/README.md` — Host/QEMU safety rules
 13. `10-implementation-checklist/README.md` — Implementation checklist
 14. `12-git-change-management/README.md` — Git workflow and handoff gates
+15. `harness_profile.yaml` — Current phase, claim status, and required gates
+16. `13-agent-routing-and-risk/README.md` — MiMo routing and next-task priority
 
 ## Key Concepts
 
@@ -66,12 +70,14 @@ llms.txt                  ← Root discovery index for agents
 - **Artifact contract** — `boot.bin` flat boot sector, `boot_config.inc` generated sector count, `kernel.elf` link artifact, `kernel.bin` raw boot artifact, `os.img` boot image, `serial.log`/`qemu.log` test evidence
 - **Evidence contract** — Automated test uses dedicated serial file, exact marker parser, QEMU status capture, and machine-written evidence
 - **Git contract** — Inspect status/diff before handoff; stage only explicit paths after approval; never stage deletions or mutate history without explicit user request
+- **Claim contract** — A subsystem is not "working" until `harness_profile.yaml` marks it claimable and a targeted runtime gate proves it.
 
 ## Engineering Rubric
 
 - Success criteria must be measurable: build artifacts exist, commands exit correctly, required serial markers appear, and current runtime gates prove claimed features.
 - Every autonomous run should leave evidence: prompt, files touched, tool calls, memory updates, guardrails, eval verdicts, and side effects.
 - Changes pass risk gates in order: Git status/diff, build correctness, boot markers, regression checks, and safety constraints.
+- MiMo must route through `13-agent-routing-and-risk/README.md`; advanced core work needs a targeted deep gate before it can change claim status.
 
 ## Sources
 
@@ -82,6 +88,7 @@ llms.txt                  ← Root discovery index for agents
 - Stack model clarification (ideas/clarify-from-gemini35flash.md)
 - External engineering rubric: Google evals/sandboxing, Oracle observability/governance, Meta standardized agent tooling/regression gates/DRS-style risk gates
 - Git/change rubric: Google small CLs/code review, Meta DRS risk gates, Microsoft branch policies/build validation, Swift incremental development, Netflix PR confidence, Tesla public PR template/contribution workflow
+- Current MiMo review rubric: GPT deep-research assessment in `research/Deep Research Assessment of MIMO v2.5pro and the OS Harness.docx`, plus external practices from Tesla, Netflix, Apple, Microsoft, Tencent, Meta, and Google.
 
 ## Status
 
@@ -95,3 +102,4 @@ llms.txt                  ← Root discovery index for agents
 - [x] Phase 8: Checklists (10-implementation-checklist/) — Deployment checklist
 - [x] Phase 9: Reference (11-reference/) — Anti-patterns, glossary, source map
 - [x] Phase 10: Git change management (12-git-change-management/) — Repo state, branch, diff, staging, and handoff gates
+- [x] Phase 11: Agent routing and risk (13-agent-routing-and-risk/, harness_profile.yaml) — Claim-aware MiMo routing and next work order

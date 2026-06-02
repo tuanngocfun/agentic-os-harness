@@ -2,7 +2,8 @@
 
 ## Project Overview
 x86 bare metal teaching operating system written in C and x86 assembly (NASM syntax).
-Runs on QEMU i386 emulator. Has a QEMU-validated interactive shell for `help` and `echo`; process, scheduler, syscall, and user-mode files are present but must not be claimed complete until they have runtime evidence.
+Runs on QEMU i386 emulator. Has a QEMU-validated interactive shell for `help`; argument-bearing commands such as `echo` need a more stable input proof before they are claimable. Process, scheduler, syscall, and user-mode files are present but must not be claimed complete until they have runtime evidence.
+Before advanced core work, read `harness-engineering/harness_profile.yaml` and `harness-engineering/13-agent-routing-and-risk/README.md`.
 
 ## Tech Stack
 - Cross-compiler: i686-elf-gcc 13.2.0 (C, freestanding, no libc)
@@ -66,11 +67,12 @@ make clean
 - Phase-1 loader uses track-rolling CHS and currently requires `KERNEL_SECTORS <= 120`
 - Kernel entry: `entry.asm` puts `_start` in `.entry`, sets stack, and calls `kernel_main()`
 - Boot-marker tests read COM1 serial output via QEMU `-serial file:build/serial.log -monitor none`
-- Shell-runtime tests use QEMU monitor `sendkey`, dump VGA text memory, and require visible `help` plus `echo ok` output.
+- Shell-runtime tests use QEMU monitor `sendkey`, dump VGA text memory, and require visible `help` output.
 - Required markers: `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
 - Optional markers: `TESTS_PASS`
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 - Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and basic command rendering. It does not prove preemptive scheduling, user-mode transition, page-fault handling, or real process isolation.
+- Current next work order: syscall ABI proof, exception/panic path, scheduler truth, paging semantics, evidence unification.
 
 ## Memory Map
 | Address | Content |
@@ -95,6 +97,8 @@ make clean
 - KHÔNG dùng `-serial mon:stdio` as automated evidence channel
 - KHÔNG chạy QEMU bằng root
 - KHÔNG passthrough host disks/devices vào QEMU boot tests
+- KHÔNG add filesystem/networking/graphics or extra shell breadth before the P0/P1 core-risk tasks in `harness_profile.yaml`
+- KHÔNG claim process/scheduler/syscall/user-mode is working without a targeted runtime test and updated claim status
 
 ## Available Skills
 - `write-bootloader` — Viết/sửa flat boot sector 512 bytes

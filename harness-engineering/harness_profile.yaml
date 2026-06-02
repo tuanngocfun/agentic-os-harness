@@ -30,11 +30,12 @@ claim_status:
   protected_mode_entry: "claimable_with_make_test"
   serial_markers: "claimable_with_make_test"
   keyboard_irq: "claimable_with_shell_runtime_test"
-  shell_help_echo: "claimable_with_shell_runtime_test"
+  shell_help: "claimable_with_shell_runtime_test"
   timer_ticks: "partial_not_claimable_without_runtime_assertion"
   memory_info: "stubbed_not_claimable"
   paging: "not_claimable"
   syscall: "claimable_with_syscall_test"
+  exception_panic: "claimable_with_exception_test"
   process: "not_claimable"
   scheduler: "not_claimable_no_timer_driven_context_switch"
   user_mode: "not_claimable_no_ring3_transition_test"
@@ -49,6 +50,7 @@ fast_gates:
   - "git diff --check"
 
 deep_gates:
+  - "make test-deep"
   - "syscall_abi_proof"
   - "exception_panic_markers"
   - "page_fault_negative_test"
@@ -124,6 +126,9 @@ mimo_next_tasks:
   - id: "evidence-unification"
     priority: "P1"
     success: "Boot and shell runtime tests append machine-readable evidence to one JSONL stream."
+  - id: "shell-command-io-proof"
+    priority: "P2"
+    success: "A stable input path proves argument-bearing shell commands such as echo, not only help dispatch."
 
 forbidden_next_breadth:
   - "filesystem"

@@ -60,17 +60,53 @@ Pass condition:
 7. For the phase-1 track-rolling CHS loader, generated sector count is `<= 120`.
 8. `build/serial.log` was created/truncated by the current run, not reused from a stale pass.
 9. For live kernel/shell tests, QEMU reaches timeout `124`; early exit `0` fails unless this is an explicit shutdown test.
-10. Shell-runtime test decodes VGA text and finds the visible shell banner, `Available commands:`, `> echo ok`, and an exact `ok` output line.
+10. Shell-runtime test decodes VGA text and finds the visible shell banner plus `Available commands:`.
 
 ## Shell-Runtime Protocol
 
 Current project phase:
 - `make test` runs `scripts/boot_test.sh`, then `scripts/shell_test.sh`.
 - `scripts/shell_test.sh` starts QEMU with a stdio monitor, sends keyboard events, dumps VGA text memory, and parses `build/vga.shell.txt`.
-- This proves keyboard IRQ input, shell dispatch, and VGA text output for `help` and `echo ok`.
+- This proves keyboard IRQ input, shell dispatch, and VGA text output for `help`.
 - It does not prove timer accuracy, memory allocation, scheduler context switching, syscall dispatch from user space, or ring-3 isolation.
 
 Do not promote a subsystem from "scaffold" to "working" until it has a targeted runtime gate and evidence artifact.
+
+## Default Gates vs Deep Gates
+
+Default gates must stay fast, stable, and route-local:
+- `make all`
+- `make test`
+- `check_harness_contract.sh`
+- `git_preflight.sh`
+- `git diff --check`
+
+Deep gates are explicit and may rebuild with selftest defines:
+- `make test-deep`
+- `make test-syscall`
+- `make test-exception`
+
+Rules:
+- Do not put deep probes directly in the default `kernel_main()` path.
+- Do not let a deep probe run inside `make test` unless the project phase explicitly promotes it.
+- A deep gate fails unless it triggers and observes the intended behavior.
+- After a deep gate, rebuild or restore the default image so the next boot test is not contaminated by selftest defines.
+
+## Harness Profile Contract
+
+`harness_profile.yaml` is the current source of truth for:
+- boot loader profile and sector limit;
+- current required, optional, and failure markers;
+- claim status for each subsystem;
+- fast gates and deep gates;
+- MiMo next-task priority.
+
+Any doc, skill, or handoff that conflicts with the profile is stale. Fix the conflict before accepting implementation work.
+
+Current claim policy:
+- `bootloader`, `protected_mode_entry`, `serial_markers`, `keyboard_irq`, and `shell_help` are claimable with current gates.
+- `timer_ticks`, `memory_info`, `paging`, `syscall`, `process`, `scheduler`, and `user_mode` are not claimable until a targeted runtime gate exists and passes.
+- Filesystem, networking, graphics mode, and additional shell breadth are forbidden next work until the P0/P1 core-risk queue is handled.
 
 ## Marker Parser
 

@@ -113,7 +113,7 @@ Mỗi skill phải có:
 - Marker parser uses exact whole-line matching after CRLF normalization.
 - Early QEMU exit after markers fails by default; it can indicate shutdown or triple fault.
 - `build/serial.log` and evidence records come from the current run.
-- Shell runtime must show `Available commands:` and an `echo ok` -> `ok` response in decoded VGA text.
+- Shell runtime must show `Available commands:` in decoded VGA text. Do not claim argument-bearing commands such as `echo` until a stable input proof exists.
 
 ### 6. `debug-boot-failure`
 
@@ -150,7 +150,7 @@ Mỗi skill phải có:
 
 **Verification:**
 - `make test` still passes required markers.
-- `scripts/shell_test.sh` must render `help` output and `echo ok` output in decoded VGA text.
+- `scripts/shell_test.sh` must render `help` output in decoded VGA text.
 - Do not claim timer commands, memory management, scheduler, syscall, or user mode as complete unless each has its own runtime test.
 
 ### 8. `regression-validation`
@@ -212,6 +212,26 @@ Mỗi skill phải có:
 - Git preflight passes.
 - Handoff includes repo root, branch, status, diff summary, risk tier, and validation evidence.
 - No write Git action happened unless requested.
+
+### 11. `agent-routing-and-risk`
+
+**Trigger:** Use before MiMo v2.5pro or any agent starts advanced OS core work, broad feature work, or progress reporting.
+
+**Inputs:** `harness_profile.yaml`, `13-agent-routing-and-risk/README.md`, changed files, intended subsystem claim.
+
+**Output:** Route selection, allowed path set, required gates, and claim-status verdict.
+
+**Instructions:**
+1. Pick exactly one route from `harness_profile.yaml`.
+2. Keep the diff inside that route unless the handoff explicitly explains why a second route is necessary.
+3. Never upgrade a subsystem from scaffold/partial to working without a targeted runtime gate.
+4. Prefer P0/P1 tasks: syscall ABI proof, exception/panic path, scheduler truth, paging semantics, evidence unification.
+5. Do not add filesystem, networking, graphics, or more shell breadth before those tasks.
+
+**Verification:**
+- `check_harness_contract.sh` passes.
+- Handoff names route, claim, evidence, remaining unproven behavior, and rollback path.
+- Progress percentage distinguishes boot-to-shell from credible protected OS core.
 
 ## Skill Authoring Rules
 

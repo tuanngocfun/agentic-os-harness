@@ -19,6 +19,9 @@
 | Let Makefile variables redirect `dd` or `clean` | Overrides can target unsafe paths | Guard `BUILD_DIR` and `OS_IMG` before write/delete commands |
 | Force too much logic into sector 0 | Boot sector exceeds 512 bytes | Split into a 2-stage bootloader |
 | Claim a feature works because files exist or boot markers pass | Scaffolding can be linked but never executed | Add runtime gates and artifacts for each behavior |
+| Run deep subsystem probes in the default boot path | Boot/shell debugging chases the wrong layer | Gate probes behind explicit selftest defines and `make test-deep` |
+| Treat structured panic markers as non-failures | `KERNEL_PANIC:...` can be missed by exact matching | Match failure marker prefixes, not only exact lines |
+| Let a fault test pass without triggering a fault | False confidence | Require exact structured panic evidence |
 | Broad Git staging | Can include unrelated/user changes | Stage explicit paths only after status and diff review |
 | Stage generated build artifacts | Makes repo stale and hard to review | Keep `build/` and binary outputs ignored/untracked |
 | Mutate Git history or remote state casually | Can destroy collaboration state | Require explicit user request and current status/diff evidence |
@@ -64,7 +67,12 @@ Engineering sources:
 Git/change-management sources:
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html): small, self-contained changes with related tests and build health.
 - [Google Engineering Practices: Code Review Standard](https://google.github.io/eng-practices/review/reviewer/standard.html): improve code health using data, style consistency, and continuous improvement rather than perfectionism.
+- [Anthropic: Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents): simple tested tool interfaces, evaluator/optimizer loops, and clear agent-computer interfaces.
+- [Anthropic: Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents): multi-turn agents need trajectory-level evals over tool calls, state changes, and environment updates.
+- [OpenAI Agent evals](https://platform.openai.com/docs/guides/agent-evals): workflow-level agent errors need trace grading and evals, not only final-output checks.
+- [OpenAI Agents SDK](https://platform.openai.com/docs/guides/agents-sdk/): agents need traces, tool handoffs, and guardrail-aware workflows.
 - [Microsoft Azure Repos branch policies](https://learn.microsoft.com/en-us/azure/devops/repos/git/branch-policies?view=azure-devops): protected branches, PR requirements, reviewers, build validation, and status checks.
+- [Microsoft Security Development Lifecycle](https://www.microsoft.com/en-us/securityengineering/sdl): secure design, threat modeling, and security validation practices apply across software including operating systems and firmware.
 - [Microsoft Azure Pipelines PR triggers](https://learn.microsoft.com/en-us/azure/devops/pipelines/repos/azure-repos-git?view=azure-devops): PR validation through branch policy and build validation.
 - [Swift.org contributing](https://www.swift.org/contributing/): incremental development, PR/release branch approvals, authorship and code-owner review boundaries.
 - [Netflix TechBlog: Improving Pull Request Confidence](https://netflixtechblog.medium.com/improving-pull-request-confidence-for-the-netflix-tv-app-b85edb05eb65): PR confidence through test evidence, stability pipelines, and explicit merge safety judgement.
@@ -100,5 +108,5 @@ Markers:
 - Failure: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 
 Runtime evidence:
-- Shell: `scripts/shell_test.sh` must prove keyboard input, command dispatch, and VGA output for `help` and `echo ok`.
+- Shell: `scripts/shell_test.sh` must prove keyboard input, command dispatch, and VGA output for `help`. Argument-bearing commands such as `echo` need a separate stable input proof.
 - Process/scheduler/syscall/user mode: scaffold only until dedicated runtime tests exist.

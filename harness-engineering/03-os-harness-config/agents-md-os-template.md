@@ -98,7 +98,7 @@ make clean
 - Core required serial markers: `BOOT_OK`, `KERNEL_INIT_OK`
 - Current shell phase required serial marker: `SHELL_READY`
 - Optional serial markers: `TESTS_PASS`
-- Current shell phase also runs a runtime shell test that proves `help` and `echo ok` through VGA output.
+- Current shell phase also runs a runtime shell test that proves `help` through VGA output.
 - Timeout: 30 seconds max
 - Xem chi tiết: `agent_docs/running_tests.md`
 

@@ -11,6 +11,8 @@
 - [Implementation Checklist](./10-implementation-checklist/README.md) — Pre-implementation gate checklist.
 - [Reference](./11-reference/README.md) — Anti-patterns, glossary, source map.
 - [Git Change Management](./12-git-change-management/README.md) — Git status, branch, diff, staging, commit, push, and handoff gates.
+- [Harness Profile](./harness_profile.yaml) — Single source of truth for phase, markers, claim status, gates, and MiMo next tasks.
+- [Agent Routing And Risk](./13-agent-routing-and-risk/README.md) — Claim-aware routing matrix and next-task priority order.
 
 ## Executable Skills
 - [compile-and-run](./.agent/skills/compile-and-run/SKILL.md) — Build OS image and run QEMU boot marker test.

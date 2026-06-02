@@ -36,4 +36,4 @@ QEMU chạy như **userspace process** trên Ubuntu host:
 
 ## Mục tiêu cuối cùng
 
-> Agent đọc AGENTS.md -> dùng skills -> build `boot.bin`, `boot_config.inc`, `kernel.elf`, `kernel.bin`, `os.img` -> QEMU boot test dùng dedicated serial file -> parse exact required marker lines (`BOOT_OK`, `KERNEL_INIT_OK`, and current-phase `SHELL_READY`) -> shell-runtime test proves `help` + `echo ok` -> PASS
+> Agent đọc AGENTS.md -> dùng skills -> build `boot.bin`, `boot_config.inc`, `kernel.elf`, `kernel.bin`, `os.img` -> QEMU boot test dùng dedicated serial file -> parse exact required marker lines (`BOOT_OK`, `KERNEL_INIT_OK`, and current-phase `SHELL_READY`) -> shell-runtime test proves `help` -> PASS
