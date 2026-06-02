@@ -134,7 +134,14 @@ void kernel_main(void) {
             serial_puts("PAGING_UNMAP_OK\n");
         }
 
-        if (map_ok && unmap_ok) {
+        uint32_t perm_addr = 0x500000;
+        paging_map_page(perm_addr, 0x300000, PAGE_PRESENT);
+        int perm_ok = paging_is_mapped(perm_addr);
+        if (perm_ok) {
+            serial_puts("PAGING_PERM_OK\n");
+        }
+
+        if (map_ok && unmap_ok && perm_ok) {
             serial_puts("PAGING_OK\n");
         } else {
             serial_puts("PAGING_FAIL\n");

@@ -81,6 +81,14 @@ void exception_handler(uint32_t vector, uint32_t error_code) {
     panic_puthex(vector);
     panic_puts(":0x");
     panic_puthex(error_code);
+
+    if (vector == 14) {
+        uint32_t fault_addr;
+        asm volatile("mov %%cr2, %0" : "=r"(fault_addr));
+        panic_puts(":0x");
+        panic_puthex(fault_addr);
+    }
+
     panic_puts("\n");
 
     while (1) {
