@@ -12,7 +12,7 @@
 | Claim QEMU is "100% safe" | Safety depends on config | State concrete safe command and forbidden flags |
 | Assume BIOS initialized `DS`/`ES`/`SS` | Memory/string/disk access becomes unstable | Initialize real-mode segments and stack first |
 | Hardcode `KERNEL_SECTORS` forever | Kernel grows and only partially loads | Generate `boot_config.inc` from `kernel.bin` size |
-| Use one CHS BIOS read for kernels larger than 17 sectors | Read crosses first floppy track boundary | Add track-rolling CHS, LBA, or 2-stage boot |
+| Use one CHS BIOS read for kernels larger than 17 sectors | Read crosses first track boundary and may assume the wrong disk geometry | Query BIOS geometry, roll CHS sectors safely, or switch to LBA/2-stage boot |
 | Rely on object list order for `_start` at 0x1000 | Reordering can jump into wrong code | Put `_start` in `.entry` and `KEEP(*(.entry))` first in linker script |
 | Parse markers with substring `grep` | `BOOT_OK_FAKE` can pass | Normalize CRLF and use exact whole-line matching |
 | Use `-serial mon:stdio` as automated evidence | Monitor and COM1 share one stream | Use `-serial file:build/serial.log -monitor none` for tests |
@@ -23,9 +23,9 @@
 | Run deep subsystem probes in the default boot path | Boot/shell debugging chases the wrong layer | Gate probes behind explicit selftest defines and `make test-deep` |
 | Treat structured panic markers as non-failures | `KERNEL_PANIC:...` can be missed by exact matching | Match failure marker prefixes, not only exact lines |
 | Let a fault test pass without triggering a fault | False confidence | Require exact structured panic evidence |
-| Claim scheduler context switching from printed markers | A test can print labels without executing a context switch | Require either queue-rotation markers or real context-execution evidence, and name the claim accordingly |
+| Claim scheduler context switching from saved register state only | A saved `esp` can exist even when no task body executed | Require queue-rotation markers plus task-execution markers from at least two runnable contexts, and name the claim accordingly |
 | Let a paging test pass without paging markers | Missing selftest output becomes a false pass | Require exact `PAGING_MAP_OK`, `PAGING_UNMAP_OK`, `PAGING_PERM_OK`, `PAGING_WRITE_FAULT_OK`, `PAGING_UNMAP_FAULT_OK`, and `PAGING_OK` markers for the current gate |
-| Prove `echo ok` by grepping typed VGA input | The command line can appear even when command output did not | Use a separate shell I/O gate with an output token distinguishable from the typed command |
+| Prove `echo ok` by grepping typed VGA input | The command line can appear even when command output did not | Use a separate shell I/O gate that requires both a serial marker and a distinct output line after the typed command |
 | Use HTML as the primary harness instruction format | Agents need concise editable contracts, not rendered reports | Use Markdown for instructions, YAML for profile/config, JSONL for evidence, and HTML only for reports |
 | Broad Git staging | Can include unrelated/user changes | Stage explicit paths only after status and diff review |
 | Stage generated build artifacts | Makes repo stale and hard to review | Keep `build/` and binary outputs ignored/untracked |
@@ -102,8 +102,17 @@ Commands:
 - `make run`
 - `make run-serial`
 - `make test`
+- `make test-deep`
 - `make test-boot`
 - `make test-shell`
+- `make test-syscall`
+- `make test-exception`
+- `make test-scheduler`
+- `make test-paging`
+- `make test-memory`
+- `make test-usermode`
+- `make test-timer`
+- `make test-shell-io`
 - `make clean`
 - `.agent/skills/git-change-management/scripts/git_preflight.sh`
 
@@ -113,10 +122,11 @@ Markers:
 - Failure: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 
 Runtime evidence:
-- Shell: `scripts/shell_test.sh` must prove keyboard input, command dispatch, and VGA output for `help`. Argument-bearing commands such as `echo` need a separate stable input proof.
+- Shell: `scripts/shell_test.sh` must prove keyboard input, command dispatch, and VGA output for `help`. `scripts/shell_io_test.sh` separately proves `echo ok` with `SHELL_ECHO_OK` and a distinct VGA output line.
 - Syscall: `scripts/syscall_test.sh` proves only the current `int 0x80` ABI contract.
 - Exception panic: `scripts/exception_test.sh` proves divide-by-zero, invalid-opcode, GPF, and page-fault structured panic paths via `KERNEL_PANIC:<vector>:<code>` markers.
-- Scheduler: `scripts/scheduler_test.sh` proves only ready-queue rotation, not context switching or task execution.
+- Scheduler: `scripts/scheduler_test.sh` proves ready-queue rotation and explicit cooperative context execution through `SCHED_A`, `SCHED_B`, and `SCHED_CONTEXT_OK`; it does not prove timer preemption.
 - Timer: `scripts/timer_test.sh` proves only that PIT-backed ticks increment during the targeted selftest.
-- Paging: `scripts/paging_test.sh` proves map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write fault, and unmap+invlpg fault evidence. It still does not prove user/supervisor isolation, process isolation, or full memory protection.
-- Process/user mode: scaffold only until dedicated runtime tests exist.
+- Paging: `scripts/paging_test.sh` proves map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write fault, and unmap+invlpg fault evidence. `scripts/usermode_test.sh` adds user/supervisor page-fault proof from ring 3. This still does not prove process isolation or full memory protection.
+- Memory: `scripts/memory_test.sh` proves CMOS/QEMU memory-size detection for the configured 512 MiB run, not an E820 map or allocator.
+- Process/user mode: `scripts/usermode_test.sh` proves process-record setup for a ring-3 entry and controlled user/supervisor page fault, not process isolation or complete userland.

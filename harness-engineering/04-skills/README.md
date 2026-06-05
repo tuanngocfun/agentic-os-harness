@@ -25,7 +25,7 @@ Mỗi skill phải có:
 2. Keep bootloader separate from kernel objects.
 3. Initialize `DS`, `ES`, `SS`, and `SP` before memory/string/disk access.
 4. Include generated `boot_config.inc` for `KERNEL_SECTORS`; do not hardcode stale counts.
-5. For the current phase-1 track-rolling CHS loader, enforce `KERNEL_SECTORS <= 120`; switch to LBA or 2-stage boot before the kernel grows beyond that.
+5. For the current phase-1 BIOS-geometry CHS loader, enforce `KERNEL_SECTORS <= 120`; switch to LBA or 2-stage boot before the kernel grows beyond that.
 6. Emit `BOOT_OK` through COM1 serial after protected-mode transition, not VGA-only output. Treat it as loader-progress evidence, not kernel identity proof unless a magic/header check exists.
 7. Emit `BOOT_DISK_ERROR` through COM1 before halting on disk read failure.
 
@@ -34,7 +34,7 @@ Mỗi skill phải có:
 - Confirm no Makefile path writes `boot.o` to sector 0.
 - Confirm `build/boot.bin` is exactly 512 bytes.
 - Confirm `build/boot_config.inc` matches `ceil(size(kernel.bin) / 512)`.
-- Confirm phase-1 CHS sector count is within the declared loader profile: `<= 120` for the current track-rolling loader, or that LBA/2-stage loading exists.
+- Confirm phase-1 CHS sector count is within the declared loader profile: `<= 120` for the current BIOS-geometry loader, or that LBA/2-stage loading exists.
 - `make test` must find `BOOT_OK`.
 
 ### 2. `setup-gdt`
@@ -113,7 +113,7 @@ Mỗi skill phải có:
 - Marker parser uses exact whole-line matching after CRLF normalization.
 - Early QEMU exit after markers fails by default; it can indicate shutdown or triple fault.
 - `build/serial.log` and evidence records come from the current run.
-- Shell runtime must show `Available commands:` in decoded VGA text. Do not claim argument-bearing commands such as `echo` until a stable input proof exists.
+- Shell runtime must show `Available commands:` in decoded VGA text. Default `make test` still proves only `help`; use `make test-shell-io` for the separate `echo ok` proof.
 
 ### 6. `debug-boot-failure`
 
@@ -128,7 +128,7 @@ Mỗi skill phải có:
 2. If no marker appears, check boot sector format and COM1 init.
 3. If only `BOOT_OK` appears, check kernel load, GDT, stack, and entry jump.
 4. If `KERNEL_PANIC` appears, read panic context before changing code.
-5. If kernel grew beyond the declared phase-1 loader profile, fix the loader profile before debugging random crashes.
+5. If the kernel grew beyond the declared phase-1 loader profile, or if a partial load is suspected, check both generated sector count and BIOS-reported drive geometry before debugging random crashes.
 
 **Verification:**
 - Proposed fix must name the file and invariant it restores.
@@ -225,7 +225,7 @@ Mỗi skill phải có:
 1. Pick exactly one route from `harness_profile.yaml`.
 2. Keep the diff inside that route unless the handoff explicitly explains why a second route is necessary.
 3. Never upgrade a subsystem from scaffold/partial to working without a targeted runtime gate.
-4. Prefer P0/P1 tasks: syscall ABI proof, exception/panic path, scheduler truth, paging semantics, evidence unification.
+4. Prefer current P0/P1 tasks: timer preemption proof, process address-space isolation, memory allocator proof, per-process paging proof, and user-mode syscall negative paths.
 5. Do not add filesystem, networking, graphics, or more shell breadth before those tasks.
 
 **Verification:**

@@ -105,6 +105,16 @@ void exception_handler(uint32_t vector, uint32_t error_code) {
     }
 #endif
 
+#ifdef ENABLE_USERMODE_SELFTEST
+    if (vector == 14) {
+        uint32_t fault_addr;
+        asm volatile("mov %%cr2, %0" : "=r"(fault_addr));
+        if (fault_addr == 0x00700000 && (error_code & 0x05) == 0x05) {
+            panic_puts("PAGING_USER_SUPERVISOR_FAULT_OK\n");
+        }
+    }
+#endif
+
     panic_puts("KERNEL_PANIC:0x");
     panic_puthex(vector);
     panic_puts(":0x");

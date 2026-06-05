@@ -50,6 +50,7 @@ static void shell_execute(const char *cmd) {
     } else if (strncmp(cmd, "echo ", 5) == 0) {
         vga_puts(cmd + 5);
         vga_puts("\n");
+        serial_puts("SHELL_ECHO_OK\n");
     } else if (strcmp(cmd, "uptime") == 0) {
         uint32_t ticks = timer_get_ticks();
         uint32_t seconds = timer_get_seconds();

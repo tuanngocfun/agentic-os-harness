@@ -24,7 +24,7 @@
 - [ ] Use `-Iinclude -MMD -MP` for kernel C objects.
 - [ ] Guard `BUILD_DIR` and `OS_IMG` before `dd` or `clean`.
 - [ ] Initialize real-mode `DS`, `ES`, `SS`, and `SP` before bootloader memory access.
-- [ ] Enforce the declared phase-1 CHS profile (`KERNEL_SECTORS <= 120` for current track-rolling CHS), or implement LBA/2-stage loading.
+- [ ] Enforce the declared phase-1 CHS profile (`KERNEL_SECTORS <= 120` for current BIOS-geometry CHS), or implement LBA/2-stage loading.
 
 ## Phase 2 — Verify Boot
 

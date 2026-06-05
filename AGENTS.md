@@ -2,7 +2,7 @@
 
 ## Project Overview
 x86 bare metal teaching operating system written in C and x86 assembly (NASM syntax).
-Runs on QEMU i386 emulator. Has a QEMU-validated interactive shell for `help`; argument-bearing commands such as `echo` need a more stable input proof before they are claimable. Process, scheduler, syscall, and user-mode files are present but must not be claimed complete until they have runtime evidence.
+Runs on QEMU i386 emulator. Has QEMU-validated boot, shell `help`, syscall ABI, exception panic, paging, scheduler, memory-detection, ring-3 user-mode, and shell `echo ok` gates. These are evidence-scoped proofs, not a complete operating system claim.
 Before advanced core work, read `harness-engineering/harness_profile.yaml` and `harness-engineering/13-agent-routing-and-risk/README.md`.
 
 ## Tech Stack
@@ -64,15 +64,17 @@ make clean
 ## Architecture Notes
 - Build artifacts: `build/boot.bin`, `build/boot_config.inc`, `build/kernel.elf`, `build/kernel.bin`, `build/os.img`
 - Boot sequence: BIOS -> `boot.bin` at 0x7C00 -> load raw `kernel.bin` at 0x1000 -> protected mode -> kernel entry
-- Phase-1 loader uses track-rolling CHS and currently requires `KERNEL_SECTORS <= 120`
+- Phase-1 loader uses BIOS-reported CHS geometry and currently requires `KERNEL_SECTORS <= 120`
 - Kernel entry: `entry.asm` puts `_start` in `.entry`, sets stack, and calls `kernel_main()`
 - Boot-marker tests read COM1 serial output via QEMU `-serial file:build/serial.log -monitor none`
 - Shell-runtime tests use QEMU monitor `sendkey`, dump VGA text memory, and require visible `help` output.
 - Required markers: `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
 - Optional markers: `TESTS_PASS`
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
-- Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and basic command rendering. It does not prove preemptive scheduling, user-mode transition, page-fault handling, or real process isolation.
-- Current next work order: syscall ABI proof, exception/panic path, scheduler truth, paging semantics, evidence unification.
+- Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and `help` rendering.
+- `make test-deep` adds syscall ABI, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, CMOS/QEMU memory-size detection, ring-3 user-mode transition with user/supervisor page fault, timer ticks, and `echo ok` shell I/O.
+- Still not proven: timer-driven preemptive scheduling, per-process address-space isolation, memory allocator correctness, full memory map handling, filesystem, networking, or graphics.
+- Current next work order: timer preemption proof, process address-space isolation proof, memory allocator proof, per-process paging proof, user-mode syscall negative-path proof.
 
 ## Memory Map
 | Address | Content |
@@ -80,10 +82,11 @@ make clean
 | 0x0000-0x03FF | Real mode IVT |
 | 0x0400-0x04FF | BIOS Data Area |
 | 0x7C00-0x7DFF | Boot sector |
-| 0x1000-0x7BFF | Kernel binary |
+| 0x1000+ | Kernel binary loaded from generated sector count |
 | 0x90000 | Temporary stack |
 | 0xB8000 | VGA text buffer |
-| 0x100000+ | Extended memory, future heap |
+| 0x100000-0x101FFF | Kernel page directory/table during paging tests |
+| 0x100000+ | Extended memory, future heap after reserved kernel/test frames |
 
 ## Things to Avoid
 - KHÔNG dùng `gcc` thường — dùng `i686-elf-gcc`
@@ -93,12 +96,12 @@ make clean
 - KHÔNG assemble boot sector bằng `nasm -f elf32` để ghi vào disk image
 - KHÔNG link `boot.bin` hoặc bootloader object vào kernel
 - KHÔNG hardcode stale `KERNEL_SECTORS`; generate or validate it from `kernel.bin`
-- KHÔNG let phase-1 track-rolling CHS loader exceed 120 kernel sectors
+- KHÔNG let the phase-1 BIOS-geometry CHS loader exceed 120 kernel sectors
 - KHÔNG dùng `-serial mon:stdio` as automated evidence channel
 - KHÔNG chạy QEMU bằng root
 - KHÔNG passthrough host disks/devices vào QEMU boot tests
 - KHÔNG add filesystem/networking/graphics or extra shell breadth before the P0/P1 core-risk tasks in `harness_profile.yaml`
-- KHÔNG claim process/scheduler/syscall/user-mode is working without a targeted runtime test and updated claim status
+- KHÔNG claim timer preemption, process isolation, full memory protection, or allocator correctness without a targeted runtime test and updated claim status
 
 ## Available Skills
 - `write-bootloader` — Viết/sửa flat boot sector 512 bytes

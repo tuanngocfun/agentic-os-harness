@@ -11,7 +11,7 @@ void syscall_init(void) {
     idt_set_gate(0x80, (uint32_t)isr_stub_128, 0x08, 0xEE);
 }
 
-uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
+uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t caller_cs) {
     switch (syscall_num) {
         case SYS_PUTS:
             vga_puts((const char *)arg1);
@@ -34,6 +34,13 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
             }
             serial_puts("\n");
             return 0xDEADBEEF;
+        case SYS_USERMODE_TEST:
+            if ((caller_cs & 0x03) == 0x03 && arg1 == 0xCAFEBABE) {
+                serial_puts("USERMODE_RING3_OK\n");
+                return 0xC001C0DE;
+            }
+            serial_puts("USERMODE_RING3_FAIL\n");
+            return 0;
         default:
             return (uint32_t)-1;
     }

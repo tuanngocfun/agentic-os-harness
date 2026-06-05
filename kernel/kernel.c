@@ -12,8 +12,11 @@
 #include "process.h"
 #include "scheduler.h"
 #include "shell.h"
+#include "string.h"
 
 #ifdef ENABLE_SCHEDULER_SELFTEST
+extern void context_switch(uint32_t *save_esp, uint32_t *load_esp);
+
 static volatile int task_a_ran = 0;
 static volatile int task_b_ran = 0;
 
@@ -34,6 +37,30 @@ static void scheduler_selftest_task_b(void) {
 }
 #endif
 
+#ifdef ENABLE_USERMODE_SELFTEST
+#define USERMODE_STACK_PHYSICAL 0x00900000
+#define USERMODE_SUPERVISOR_PROBE_ADDR 0x00700000
+#define USERMODE_SUPERVISOR_PROBE_PHYSICAL 0x00910000
+
+extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
+
+static __attribute__((noreturn)) void usermode_selftest_entry(void) {
+    uint32_t result;
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(SYS_USERMODE_TEST), "b"(0xCAFEBABE), "c"(0), "d"(0)
+    );
+    (void)result;
+
+    volatile uint32_t *supervisor_page = (volatile uint32_t *)USERMODE_SUPERVISOR_PROBE_ADDR;
+    (void)*supervisor_page;
+
+    while (1) {
+    }
+}
+#endif
+
 void kernel_main(void) {
     serial_init();
     serial_puts("KERNEL_INIT_OK\n");
@@ -49,6 +76,22 @@ void kernel_main(void) {
     paging_init();
     tss_init();
     syscall_init();
+
+#ifdef ENABLE_MEMORY_SELFTEST
+    {
+        uint32_t total_kb = memory_get_total_kb();
+        serial_puts("MEMORY_TEST\n");
+        serial_puts("MEMORY_TOTAL_KB:");
+        serial_put_uint32(total_kb);
+        serial_puts("\n");
+
+        if (memory_detected_from_hardware() && total_kb >= (16 * 1024)) {
+            serial_puts("MEMORY_DETECT_OK\n");
+        } else {
+            serial_puts("MEMORY_DETECT_FAIL\n");
+        }
+    }
+#endif
 
 #ifdef ENABLE_SYSCALL_ABI_SELFTEST
     {
@@ -137,8 +180,30 @@ void kernel_main(void) {
             } else {
                 serial_puts("SCHED_QUEUE_FAIL\n");
             }
+        }
 
-            if (task_a->esp != 0 && task_b->esp != 0) {
+        scheduler_init();
+        process_init();
+        task_a_ran = 0;
+        task_b_ran = 0;
+
+        struct process kernel_task;
+        memset(&kernel_task, 0, sizeof(kernel_task));
+        kernel_task.state = PROCESS_RUNNING;
+
+        task_a = process_create((uint32_t)scheduler_selftest_task_a, 0);
+        task_b = process_create((uint32_t)scheduler_selftest_task_b, 0);
+
+        if (!task_a || !task_b) {
+            serial_puts("SCHED_CONTEXT_FAIL\n");
+        } else {
+            scheduler_set_current(&kernel_task);
+            scheduler_add(task_a);
+            scheduler_add(task_b);
+
+            yield();
+
+            if (task_a_ran && task_b_ran && kernel_task.esp != 0) {
                 serial_puts("SCHED_CONTEXT_OK\n");
             } else {
                 serial_puts("SCHED_CONTEXT_FAIL\n");
@@ -224,6 +289,39 @@ void kernel_main(void) {
             serial_puts("PAGING_OK\n");
         } else {
             serial_puts("PAGING_FAIL\n");
+        }
+    }
+#endif
+
+#ifdef ENABLE_USERMODE_SELFTEST
+    {
+        serial_puts("USERMODE_TEST\n");
+
+        process_init();
+        struct process *user_proc = process_create((uint32_t)usermode_selftest_entry, 1);
+
+        uint32_t user_code_page = ((uint32_t)usermode_selftest_entry) & 0xFFFFF000;
+        uint32_t user_stack_page = USER_STACK_TOP - 4096;
+
+        paging_map_page(user_code_page, user_code_page, PAGE_PRESENT | PAGE_USER);
+        paging_map_page(user_stack_page,
+                        USERMODE_STACK_PHYSICAL,
+                        PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+        paging_map_page(USERMODE_SUPERVISOR_PROBE_ADDR,
+                        USERMODE_SUPERVISOR_PROBE_PHYSICAL,
+                        PAGE_PRESENT | PAGE_WRITABLE);
+
+        if (user_proc &&
+            paging_is_user_accessible(user_code_page) &&
+            paging_is_user_accessible(user_stack_page) &&
+            !paging_is_user_accessible(USERMODE_SUPERVISOR_PROBE_ADDR)) {
+            serial_puts("PROCESS_USERMODE_READY\n");
+            enter_user_mode(user_proc->eip, USER_STACK_TOP);
+        }
+
+        serial_puts("USERMODE_FAIL\n");
+        while (1) {
+            asm volatile("cli; hlt");
         }
     }
 #endif

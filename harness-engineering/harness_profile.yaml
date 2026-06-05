@@ -11,7 +11,7 @@ format_policy:
   rule: "Instruction files stay concise Markdown; machine state stays YAML/JSONL; HTML is for rendered reports, not agent input contracts."
 
 boot_profile:
-  loader: "phase1_track_rolling_chs"
+  loader: "phase1_bios_geometry_chs"
   kernel_sector_limit: 120
   kernel_load_address: "0x1000"
   artifacts:
@@ -38,14 +38,15 @@ claim_status:
   serial_markers: "claimable_with_make_test"
   keyboard_irq: "claimable_with_shell_runtime_test"
   shell_help: "claimable_with_shell_runtime_test"
+  shell_echo: "claimable_with_shell_io_test"
   timer_ticks: "claimable_with_timer_test"
-  memory_info: "stubbed_not_claimable"
-  paging: "partial_claimable_map_unmap_permission_fault_invalidation_test"
+  memory_info: "claimable_with_memory_detection_test"
+  paging: "partial_claimable_map_unmap_permission_fault_invalidation_user_supervisor_test"
   syscall: "claimable_with_syscall_test"
   exception_panic: "claimable_with_exception_test_suite"
-  process: "not_claimable"
-  scheduler: "partial_claimable_queue_rotation_test"
-  user_mode: "not_claimable_no_ring3_transition_test"
+  process: "partial_claimable_user_process_record_ring3_entry_test"
+  scheduler: "claimable_with_scheduler_explicit_context_switch_test"
+  user_mode: "claimable_with_usermode_ring3_test"
   filesystem: "not_started"
   networking: "not_started"
 
@@ -60,17 +61,20 @@ deep_gates:
   - "make test-deep"
   - "syscall_abi_proof"
   - "exception_panic_markers"
-  - "scheduler_queue_rotation_proof"
+  - "scheduler_queue_rotation_and_explicit_context_switch_proof"
   - "paging_map_unmap_permission_fault_invalidation_test"
-  - "timer_ticks_runtime_assertion"
-
-pending_deep_gates:
-  - "page_fault_negative_test"
-  - "scheduler_context_switch_proof"
   - "paging_user_supervisor_isolation_test"
   - "memory_detection_runtime_test"
   - "process_user_mode_transition_test"
+  - "timer_ticks_runtime_assertion"
   - "shell_command_io_stable_test"
+
+pending_deep_gates:
+  - "scheduler_timer_preemption_proof"
+  - "process_address_space_isolation_test"
+  - "memory_allocator_runtime_test"
+  - "paging_per_process_address_space_test"
+  - "syscall_user_mode_negative_path_test"
 
 routes:
   harness_only:
@@ -125,21 +129,21 @@ routes:
       - "panic_or_fault_evidence_for_negative_paths"
 
 mimo_next_tasks:
-  - id: "paging-user-supervisor-isolation-proof"
+  - id: "scheduler-timer-preemption-proof"
     priority: "P1"
-    success: "A targeted gate proves user/supervisor enforcement or ring-3 isolation; current paging gate proves map/unmap, CR0.WP-backed write fault, and unmap+invlpg fault evidence only."
-  - id: "scheduler-context-switch-proof"
+    success: "A targeted gate wires PIT timer delivery into scheduling and proves preemptive task execution without relying on cooperative yield only."
+  - id: "process-address-space-isolation-proof"
     priority: "P1"
-    success: "Timer-driven or explicit safe context-switch path proves at least two runnable contexts actually execute in expected order; current queue-rotation proof is not enough for this claim."
-  - id: "memory-detection-proof"
+    success: "A targeted gate proves separate process address spaces cannot read or write each other through user-mode mappings."
+  - id: "memory-allocator-proof"
     priority: "P1"
-    success: "A runtime gate proves detected memory size/source rather than returning a stubbed constant."
-  - id: "process-user-mode-proof"
-    priority: "P1"
-    success: "A targeted gate proves a real ring-3 transition or keeps process/user mode explicitly not claimable."
-  - id: "shell-command-io-proof"
+    success: "A runtime gate proves frame allocation/free behavior and exhaustion handling against the detected memory source."
+  - id: "paging-per-process-address-space-proof"
     priority: "P2"
-    success: "A separate targeted gate proves argument-bearing shell commands such as echo, not default scripts/shell_test.sh; the proof must distinguish typed input from command output."
+    success: "A targeted gate proves per-process page directories or equivalent isolation, not only a single global page table."
+  - id: "syscall-user-mode-negative-path-proof"
+    priority: "P2"
+    success: "A ring-3 syscall gate proves valid user syscalls and invalid syscall numbers/arguments return controlled errors without kernel panic."
 
 forbidden_next_breadth:
   - "filesystem"

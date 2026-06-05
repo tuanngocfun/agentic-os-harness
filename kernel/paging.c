@@ -7,9 +7,12 @@
 #define PAGES_PER_TABLE 1024
 #define TABLES_PER_DIR 1024
 #define TOTAL_PAGES 1024
+#define PAGE_DIRECTORY_PHYSICAL 0x00100000
+#define FIRST_PAGE_TABLE_PHYSICAL 0x00101000
+#define RESERVED_LOW_PAGES 258
 
-static uint32_t page_directory[1024] __attribute__((aligned(4096)));
-static uint32_t first_page_table[1024] __attribute__((aligned(4096)));
+static uint32_t *const page_directory = (uint32_t *)PAGE_DIRECTORY_PHYSICAL;
+static uint32_t *const first_page_table = (uint32_t *)FIRST_PAGE_TABLE_PHYSICAL;
 
 static uint8_t page_bitmap[TOTAL_PAGES / 8];
 
@@ -72,7 +75,7 @@ void paging_init(void) {
 
     page_directory[0] = ((uint32_t)first_page_table) | PAGE_PRESENT | PAGE_WRITABLE;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < RESERVED_LOW_PAGES; i++) {
         bitmap_set(i);
     }
 
@@ -89,6 +92,8 @@ void paging_map_page(uint32_t virtual_addr, uint32_t physical_addr, uint32_t fla
         page_table = allocator_alloc_page_table();
         if (!page_table) return;
         page_directory[dir_index] = ((uint32_t)page_table) | PAGE_PRESENT | PAGE_WRITABLE | (flags & PAGE_USER);
+    } else if (flags & PAGE_USER) {
+        page_directory[dir_index] |= PAGE_USER;
     }
 
     page_table = (uint32_t *)(page_directory[dir_index] & 0xFFFFF000);
@@ -129,4 +134,16 @@ uint32_t paging_get_page_table_addr(uint32_t virtual_addr) {
         return 0;
     }
     return page_directory[dir_index] & 0xFFFFF000;
+}
+
+int paging_is_user_accessible(uint32_t virtual_addr) {
+    uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
+    uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
+
+    if ((page_directory[dir_index] & (PAGE_PRESENT | PAGE_USER)) != (PAGE_PRESENT | PAGE_USER)) {
+        return 0;
+    }
+
+    uint32_t *page_table = (uint32_t *)(page_directory[dir_index] & 0xFFFFF000);
+    return (page_table[table_index] & (PAGE_PRESENT | PAGE_USER)) == (PAGE_PRESENT | PAGE_USER);
 }

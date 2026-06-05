@@ -5,11 +5,13 @@
 static struct process process_table[MAX_PROCESSES];
 static uint32_t next_pid = 1;
 static uint32_t process_count = 0;
+static uint32_t stack_pool[16 * 1024];
+static uint32_t stack_offset = 0;
 
 static uint32_t *allocate_stack(uint32_t size) {
-    static uint32_t stack_pool[16 * 1024];
-    static uint32_t stack_offset = 0;
-
+    if (stack_offset + (size / sizeof(uint32_t)) > (sizeof(stack_pool) / sizeof(stack_pool[0]))) {
+        return NULL;
+    }
     uint32_t *stack = &stack_pool[stack_offset];
     stack_offset += size / sizeof(uint32_t);
     return stack;
@@ -19,6 +21,7 @@ void process_init(void) {
     memset(process_table, 0, sizeof(process_table));
     next_pid = 1;
     process_count = 0;
+    stack_offset = 0;
 }
 
 struct process *process_create(uint32_t entry_point, int is_user) {

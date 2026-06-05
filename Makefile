@@ -68,7 +68,7 @@ $(BOOT_CONFIG): guard-paths $(KERNEL_BIN)
 	@sectors=$$((($$(wc -c < $(KERNEL_BIN)) + 511) / 512)); \
 	if [ "$$sectors" -lt 1 ]; then sectors=1; fi; \
 	if [ "$$sectors" -gt "$(KERNEL_MAX_CHS_SECTORS)" ]; then \
-		echo "ERROR: kernel.bin requires $$sectors sectors; CHS track-rolling loader supports max $(KERNEL_MAX_CHS_SECTORS)"; \
+		echo "ERROR: kernel.bin requires $$sectors sectors; BIOS-geometry CHS loader supports max $(KERNEL_MAX_CHS_SECTORS)"; \
 		exit 1; \
 	fi; \
 	printf 'KERNEL_SECTORS equ %s\n' "$$sectors" > $@
@@ -173,7 +173,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-timer
+test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-shell-io
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -209,9 +209,20 @@ test-paging:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_PAGING_SELFTEST
 	@bash scripts/paging_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
+test-memory:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_MEMORY_SELFTEST
+	@bash scripts/memory_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-usermode:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_USERMODE_SELFTEST
+	@bash scripts/usermode_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 test-timer:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_TIMER_SELFTEST
 	@bash scripts/timer_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-shell-io: $(OS_IMG)
+	@bash scripts/shell_io_test.sh
 
 clean: guard-paths
 	rm -rf $(BUILD_DIR)
@@ -220,4 +231,4 @@ clean: guard-paths
 
 FORCE:
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-timer clean FORCE
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-shell-io clean FORCE

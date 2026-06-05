@@ -22,6 +22,7 @@ start:
     mov [BOOT_DRIVE], dl
 
     call serial_init_16
+    call detect_drive_geometry
     call enable_a20
     call load_kernel
     call switch_to_pm
@@ -81,6 +82,34 @@ enable_a20:
     out 0x92, al
     ret
 
+detect_drive_geometry:
+    push ax
+    push bx
+    push cx
+    push dx
+
+    mov ah, 0x08
+    mov dl, [BOOT_DRIVE]
+    int 0x13
+    jc .fallback
+
+    and cl, 0x3F
+    jz .fallback
+    mov [SECTORS_PER_TRACK], cl
+    mov [LAST_HEAD], dh
+    jmp .done
+
+.fallback:
+    mov byte [SECTORS_PER_TRACK], 18
+    mov byte [LAST_HEAD], 1
+
+.done:
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
 load_kernel:
     mov si, KERNEL_OFFSET
     mov cx, KERNEL_SECTORS
@@ -110,11 +139,13 @@ load_kernel:
 
     add si, 512
     inc byte [CUR_SECTOR]
-    cmp byte [CUR_SECTOR], 18
+    mov al, [SECTORS_PER_TRACK]
+    cmp [CUR_SECTOR], al
     jbe .next
     mov byte [CUR_SECTOR], 1
     inc byte [CUR_HEAD]
-    cmp byte [CUR_HEAD], 1
+    mov al, [LAST_HEAD]
+    cmp [CUR_HEAD], al
     jbe .next
     mov byte [CUR_HEAD], 0
     inc byte [CUR_CYLINDER]
@@ -184,6 +215,8 @@ BOOT_DRIVE: db 0
 CUR_CYLINDER: db 0
 CUR_HEAD: db 0
 CUR_SECTOR: db 2
+SECTORS_PER_TRACK: db 18
+LAST_HEAD: db 1
 MSG_BOOT_OK: db 'BOOT_OK', 0x0A, 0
 MSG_BOOT_DISK_ERROR: db 'BOOT_DISK_ERROR', 0x0A, 0
 

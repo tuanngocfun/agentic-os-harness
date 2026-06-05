@@ -57,7 +57,7 @@ Pass condition:
 4. `build/serial.log` does not contain failure markers.
 5. `build/boot.bin` is exactly 512 bytes.
 6. `build/boot_config.inc` sector count matches `ceil(size(build/kernel.bin) / 512)`.
-7. For the phase-1 track-rolling CHS loader, generated sector count is `<= 120`.
+7. For the phase-1 BIOS-geometry CHS loader, generated sector count is `<= 120`.
 8. `build/serial.log` was created/truncated by the current run, not reused from a stale pass.
 9. For live kernel/shell tests, QEMU reaches timeout `124`; early exit `0` fails unless this is an explicit shutdown test.
 10. Shell-runtime test decodes VGA text and finds the visible shell banner plus `Available commands:`.
@@ -68,7 +68,7 @@ Current project phase:
 - `make test` runs `scripts/boot_test.sh`, then `scripts/shell_test.sh`.
 - `scripts/shell_test.sh` starts QEMU with a stdio monitor, sends keyboard events, dumps VGA text memory, and parses `build/vga.shell.txt`.
 - This proves keyboard IRQ input, shell dispatch, and VGA text output for `help`.
-- It does not prove timer accuracy, memory allocation, scheduler context switching, syscall dispatch from user space, or ring-3 isolation.
+- It does not prove timer accuracy, memory allocation, scheduler context switching, syscall dispatch from user space, ring-3 isolation, or argument-bearing shell commands. Those require targeted deep gates.
 
 Do not promote a subsystem from "scaffold" to "working" until it has a targeted runtime gate and evidence artifact.
 
@@ -90,7 +90,10 @@ Deep gates are explicit and may rebuild with selftest defines:
 - `make test-exception-pagefault`
 - `make test-scheduler`
 - `make test-paging`
+- `make test-memory`
+- `make test-usermode`
 - `make test-timer`
+- `make test-shell-io`
 
 Rules:
 - Do not put deep probes directly in the default `kernel_main()` path.
@@ -114,10 +117,12 @@ Current claim policy:
 - `bootloader`, `protected_mode_entry`, `serial_markers`, `keyboard_irq`, and `shell_help` are claimable with current default gates.
 - `syscall` and `exception_panic` are claimable only through their targeted deep gates.
 - `timer_ticks` is claimable only through `make test-timer`.
-- `paging` is partially claimable only as map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write-fault evidence, and unmap+invlpg fault evidence. Do not claim user/supervisor isolation, process isolation, or full memory protection yet.
-- `scheduler` is partially claimable only as ready-queue rotation; no context-switch, task-execution, or preemptive-scheduling claim is allowed yet.
-- `memory_info`, `process`, and `user_mode` are not claimable until a targeted runtime gate exists and passes.
-- Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. It must not probe, claim, or write JSONL evidence for `echo ok`; argument-bearing commands require a separate `shell-command-io-proof` route.
+- `paging` is partially claimable as map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write-fault evidence, unmap+invlpg fault evidence, and user/supervisor enforcement through the ring-3 page-fault gate. Do not claim process isolation or full memory protection yet.
+- `scheduler` is claimable only as ready-queue rotation plus explicit cooperative context execution through `make test-scheduler`. Do not claim timer-driven preemptive scheduling yet.
+- `memory_info` is claimable only as CMOS/QEMU memory-size detection through `make test-memory`; this is not an E820 map or allocator proof.
+- `process` is partially claimable only as process-record setup feeding a ring-3 user-mode transition through `make test-usermode`. Do not claim process isolation yet.
+- `user_mode` is claimable only as a ring-3 transition and user/supervisor page-fault proof through `make test-usermode`.
+- Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. `scripts/shell_io_test.sh` is the separate targeted route for `echo ok`; argument-bearing commands beyond that need their own unambiguous I/O proof.
 - Filesystem, networking, graphics mode, and additional shell breadth are forbidden next work until the P0/P1 core-risk queue is handled.
 
 ## Build-Config Rebuild Protocol
@@ -199,7 +204,7 @@ If a match appears, fix the stale snippet before continuing.
 - Makefile snippets must use `wc -c` for portable byte counts.
 - Makefile snippets must guard `BUILD_DIR` and `OS_IMG` before `dd` or `clean`.
 - Makefile snippets must validate `boot.bin` is exactly 512 bytes.
-- Phase-1 CHS snippets must reject counts beyond their declared loader profile: `> 17` for single-track loading, `> 120` for the current track-rolling profile, or must implement LBA/2-stage loading.
+- Phase-1 CHS snippets must reject counts beyond their declared loader profile: `> 17` for single-track loading, `> 120` for the current BIOS-geometry profile, or must implement LBA/2-stage loading.
 - Boot sector snippets must use `nasm -f bin`.
 - Boot sector snippets must initialize `DS`, `ES`, `SS`, and `SP` before memory/string/disk access.
 - Kernel flow must name both `kernel.elf` and `kernel.bin`.

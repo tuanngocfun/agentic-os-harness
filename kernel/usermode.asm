@@ -20,6 +20,24 @@ switch_to_usermode:
 .user_entry:
     ret
 
+global enter_user_mode
+enter_user_mode:
+    mov eax, [esp + 4]
+    mov edx, [esp + 8]
+
+    mov cx, 0x23
+    mov ds, cx
+    mov es, cx
+    mov fs, cx
+    mov gs, cx
+
+    push dword 0x23
+    push edx
+    push dword 0x202
+    push dword 0x1B
+    push eax
+    iretd
+
 global context_switch
 context_switch:
     push ebp

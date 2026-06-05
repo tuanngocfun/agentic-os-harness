@@ -11,12 +11,12 @@ void tss_init(void) {
 
     tss.ss0 = 0x10;
     tss.esp0 = 0x90000;
-    tss.cs = 0x08 | 0x03;
-    tss.ss = 0x10 | 0x03;
-    tss.ds = 0x10 | 0x03;
-    tss.es = 0x10 | 0x03;
-    tss.fs = 0x10 | 0x03;
-    tss.gs = 0x10 | 0x03;
+    tss.cs = 0x1B;
+    tss.ss = 0x23;
+    tss.ds = 0x23;
+    tss.es = 0x23;
+    tss.fs = 0x23;
+    tss.gs = 0x23;
     tss.iomap_base = sizeof(tss);
 
     gdt_set_gate(5, (uint32_t)&tss, sizeof(tss), 0xE9, 0x00);

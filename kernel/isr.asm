@@ -70,12 +70,13 @@ isr_stub_128:
     push esi
     push edi
 
+    push dword [ebp + 8]
     push edx
     push ecx
     push ebx
     push eax
     call syscall_handler
-    add esp, 16
+    add esp, 20
 
     mov [ebp - 4], eax
 
