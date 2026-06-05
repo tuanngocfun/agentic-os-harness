@@ -61,8 +61,15 @@ void scheduler_schedule(void) {
 }
 
 void scheduler_tick(void) {
+    // Timer IRQ0 is now enabled, but preemptive scheduling requires:
+    // 1. Saving interrupted context (all registers, flags, EIP, ESP)
+    // 2. Switching to next task's saved context
+    // 3. Restoring and resuming execution
+    // Current context_switch() only works for cooperative yield().
+    // TODO: Implement interrupt-driven context save/restore before enabling this.
     if (!scheduler_initialized) return;
-    scheduler_schedule();
+    if (!ready_queue) return;
+    // scheduler_schedule();  // Disabled until we have preemptive context switching
 }
 
 uint32_t scheduler_get_count(void) {

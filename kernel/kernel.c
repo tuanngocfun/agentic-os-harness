@@ -162,13 +162,13 @@ void kernel_main(void) {
             scheduler_add(task_a);
             scheduler_add(task_b);
 
-            scheduler_tick();
+            scheduler_schedule();
             struct process *first = scheduler_get_current();
 
-            scheduler_tick();
+            scheduler_schedule();
             struct process *second = scheduler_get_current();
 
-            scheduler_tick();
+            scheduler_schedule();
             struct process *third = scheduler_get_current();
 
             if (first == task_a &&
@@ -329,5 +329,20 @@ void kernel_main(void) {
     shell_init();
     serial_puts("SHELL_READY\n");
     vga_puts("Shell ready. Type 'help' for commands.\n");
+
+#if defined(ENABLE_TIMER_TEST) && !defined(ENABLE_SCHEDULER_SELFTEST)
+    // Timer preemption test: wait and report tick count
+    uint32_t start_ticks = timer_get_ticks();
+    // Wait for ~2 seconds worth of ticks (at 18.2 Hz = ~36 ticks)
+    for (volatile int j = 0; j < 100; j++) {
+        for (volatile int i = 0; i < 1000000; i++) { }
+    }
+    uint32_t end_ticks = timer_get_ticks();
+    serial_puts("TIMER_TICK_COUNT ");
+    serial_put_uint32(end_ticks - start_ticks);
+    serial_puts("\n");
+    while(1) { asm volatile("hlt"); }
+#else
     shell_run();
+#endif
 }

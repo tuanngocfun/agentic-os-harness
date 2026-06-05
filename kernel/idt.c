@@ -50,7 +50,7 @@ static void pic_remap(void) {
     outb(0xA1, 0x02);
     outb(0x21, 0x01);
     outb(0xA1, 0x01);
-    outb(0x21, 0xFC);
+    outb(0x21, 0xFC);  // IRQ0 (timer) masked until preemptive scheduling ready
     outb(0xA1, 0xFF);
 }
 

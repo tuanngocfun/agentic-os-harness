@@ -1,4 +1,5 @@
 #include "timer.h"
+#include "scheduler.h"
 #include <stdint.h>
 
 #define PIT_CHANNEL0 0x40
@@ -13,6 +14,7 @@ static inline void outb(uint16_t port, uint8_t val) {
 
 void timer_handler(void) {
     timer_ticks++;
+    scheduler_tick();
 }
 
 void timer_init(uint32_t freq) {
