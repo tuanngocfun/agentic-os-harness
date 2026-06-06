@@ -2,7 +2,7 @@
 
 ## Muc tieu
 
-This file routes MiMo v2.5pro and other coding agents after the boot-to-shell milestone. It exists because the current OS has real boot/shell evidence, but advanced kernel subsystems are still scaffold or partial. The next work must convert risky scaffolds into proven behavior, not add breadth.
+This file routes MiMo v2.5pro and other coding agents after the boot-to-shell milestone. It exists because the current OS has real boot/shell evidence and several targeted advanced-core proofs, but some kernel subsystems are still scaffold or partial. The next work must convert risky scaffolds into proven behavior, not add breadth.
 
 Read this with `harness_profile.yaml`. If they conflict, fix the conflict before implementing code.
 
@@ -18,15 +18,16 @@ Proven now:
 - Timer selftest proves PIT-backed tick counter increments when `make test-timer` passes.
 - Syscall ABI selftest proves the current `int 0x80` register contract when `make test-syscall` passes.
 - Exception selftest proves divide-by-zero, invalid-opcode, GPF, and page-fault panic evidence as `KERNEL_PANIC:<vector>:<code>` when `make test-exception`, `make test-exception-div0`, `make test-exception-gpf`, and `make test-exception-pagefault` pass.
-- Scheduler selftest proves queue rotation plus explicit cooperative context execution through `SCHED_A`, `SCHED_B`, and `SCHED_CONTEXT_OK`. It does not prove timer-driven preemption.
-- Paging selftest proves map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write fault, unmap+invlpg fault evidence, and user/supervisor enforcement through the ring-3 page-fault gate. It does not prove process isolation.
-- Memory selftest proves CMOS/QEMU memory-size detection for the configured 512 MiB QEMU run. It does not prove an E820 memory map or allocator.
-- User-mode selftest proves a ring-3 transition and controlled user/supervisor page fault. It does not prove full userland or process isolation.
+- Scheduler selftest proves queue rotation plus explicit cooperative context execution through `SCHED_A`, `SCHED_B`, and `SCHED_CONTEXT_OK`. Timer-preemption selftest proves IRQ0-driven switching between two non-yielding tasks through `PREEMPT_A`, `PREEMPT_B`, and `PREEMPT_OK`. Scheduler safety selftest proves current priority, fairness, and interrupt-critical-section markers through `SCHED_PRIORITY_OK`, `SCHED_FAIRNESS_OK`, and `SCHED_SAFETY_OK`.
+- Paging selftest proves map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write fault, unmap+invlpg fault evidence, and user/supervisor enforcement through the ring-3 page-fault gate. Address-space selftest proves distinct CR3 values and isolated physical frames behind the same virtual address.
+- Syscall negative-path selftest proves ring-3 valid syscall execution and controlled errors for invalid syscall numbers, kernel-space pointers, and unmapped user pointers.
+- Memory selftest proves E820-backed usable-memory detection for the configured 512 MiB QEMU run. E820/frame selftest proves E820 map handoff and physical frame allocation/free/reuse/exhaustion. Allocator selftest proves fixed-heap `kmalloc`/`kfree` allocation, reuse, free/coalescing accounting, and exhaustion.
+- User-mode selftest proves a ring-3 transition and controlled user/supervisor page fault. It does not prove full userland.
 
 Not proven:
-- Timer-driven preemptive scheduling.
-- Per-process address-space isolation and broader memory protection.
-- Memory allocator correctness, free/reuse behavior, or detected E820-style memory map.
+- Production-grade virtual memory or dynamic heap growth from arbitrary frame runs.
+- Full userland syscall ABI coverage beyond the proven syscall set and negative paths.
+- SMP-safe scheduling or production-grade synchronization.
 - Filesystem, networking, graphics, and production-grade userland.
 
 ## Loop Traps Diagnosed
@@ -53,8 +54,8 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | Scope | Rating | Why |
 |---|---:|---|
 | Boot-to-shell teaching milestone | 80% | Build, boot markers, keyboard IRQ, shell dispatch, and VGA runtime proof pass. |
-| Credible protected OS core | 55% | GDT/IDT exist; timer ticks, syscall ABI, exception panic, explicit cooperative scheduler context execution, paging fault evidence, user/supervisor enforcement, memory detection, and ring-3 entry have targeted gates, but timer preemption, process isolation, allocator behavior, and broader memory protection are still unproven. |
-| Blended current project promise | 68% | Real stage-one implementation plus several stage-two proofs, still missing the isolation and allocator guarantees needed for a credible OS core. |
+| Credible protected OS core | 76% | GDT/IDT exist; timer ticks, syscall ABI plus ring-3 negative paths, exception panic, cooperative and preemptive scheduler evidence, scheduler priority/fairness markers, paging fault evidence, user/supervisor enforcement, E820/frame lifecycle evidence, heap allocator behavior, ring-3 entry, and per-process CR3 isolation have targeted gates, but production-grade VM, SMP safety, and full userland remain unproven. |
+| Blended current project promise | 80% | Real stage-one implementation plus several stage-two proofs; remaining risk is breadth and hardening, not the three previously pending core proof routes. |
 
 ## Routing Matrix
 
@@ -67,10 +68,11 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | `syscall_abi` | `isr.asm`, `syscall.c`, syscall header, focused runtime test | Runtime test proves register ABI, return value, and failure syscall number | User-mode syscall unless ring-3 transition is also tested |
 | `exception_panic` | IDT exception gates, panic output, negative test harness | Fault tests emit structured `KERNEL_PANIC:<vector>:<code>` and QEMU does not silently triple-fault | Stability of paging/user-mode until those tests exercise the path |
 | `scheduler_queue` | Process creation, ready queue, scheduler tick/current-process APIs | Test proves deterministic queue rotation across two process records | Preemptive scheduling or isolation |
-| `scheduler_truth` | PIT timer, scheduler, process, context switch asm/TSS | Test proves at least two runnable contexts execute in expected order; current proof is explicit cooperative yield only | Process isolation or preemptive multitasking without timer integration proof |
-| `paging_semantics` | Page tables, allocator for page tables, permissions, invalidation | Map/unmap, writable access, CR0.WP write fault, unmap+invlpg fault evidence, user/supervisor page fault, and no selftest flag leakage into default boot | Process isolation or full memory protection |
-| `memory_detection` | CMOS/BIOS memory detection, memory summaries, targeted memory test | `make test-memory` proves the configured QEMU memory total and source marker | E820 map, allocator correctness, or free-frame accounting |
-| `user_mode` | GDT/TSS selectors, user-mode entry, syscall/exception boundary | `make test-usermode` proves ring-3 transition and supervisor-page fault from user mode | Process isolation, userland ABI completeness, or preemptive scheduling |
+| `scheduler_truth` | PIT timer, scheduler, process, context switch asm/TSS | `make test-scheduler` proves cooperative context execution; `make test-timer-preemption` proves IRQ0-driven execution of two non-yielding tasks; `make test-scheduler-safety` proves current priority/fairness/critical-section markers | Process isolation or SMP-grade scheduling beyond the tested path |
+| `paging_semantics` | Page tables, allocator for page tables, permissions, invalidation | Map/unmap, writable access, CR0.WP write fault, unmap+invlpg fault evidence, user/supervisor page fault, CR3 switching, same-VA/different-frame isolation, and no selftest flag leakage into default boot | Complete memory protection or frame lifecycle correctness |
+| `memory_detection` | BIOS E820 detection, memory summaries, targeted memory/frame tests | `make test-memory` proves the configured QEMU usable-memory marker; `make test-e820-frame` proves E820 handoff and frame lifecycle; `make test-allocator` proves fixed-heap behavior | Production-grade heap growth or full VM memory-zone policy |
+| `user_mode` | GDT/TSS selectors, user-mode entry, syscall/exception boundary | `make test-usermode` proves ring-3 transition and supervisor-page fault from user mode; address-space isolation is separately proven by `make test-address-space` | Userland ABI completeness or syscall negative-path coverage |
+| `syscall_negative` | syscall validation, page-aware user pointer checks, ring-3 syscall harness | `make test-syscall-negative` proves invalid numbers, kernel pointers, unmapped user pointers, and valid ring-3 syscall marker path | Complete POSIX-style syscall ABI or resource-limit policy |
 
 ## Format Policy
 
@@ -83,24 +85,15 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Next MiMo Tasks
 
-1. `scheduler-timer-preemption-proof`
-   Current scheduler proof is explicit cooperative yield. Wire timer delivery into scheduling and prove deterministic preemptive task execution before claiming preemptive multitasking.
+1. `core-stress-and-static-hardening`
+   Re-run syscall, scheduler, paging, E820, frame, and allocator gates under broader stress/static review before adding new OS breadth.
 
-2. `process-address-space-isolation-proof`
-   Current process proof is a process record plus ring-3 entry. Prove that separate process address spaces cannot read or write each other before claiming process isolation.
-
-3. `memory-allocator-proof`
-   Current memory proof is total-size detection only. Add frame allocation/free/exhaustion tests before claiming allocator correctness.
-
-4. `paging-per-process-address-space-proof`
-   Current paging proof uses a kernel-global page-table setup. Prove per-process page directories or equivalent isolation before claiming real process memory separation.
-
-5. `syscall-user-mode-negative-path-proof`
-   Current syscall ABI proof is kernel selftest oriented. Prove ring-3 syscall success and controlled failure paths for invalid syscall numbers/arguments.
+2. `second-stage-loader-or-storage-design`
+   Plan the next architectural step only after the core-risk gates stay green. A second-stage loader may be a better prerequisite than filesystem breadth.
 
 ## Forbidden Next Work
 
-Do not add filesystem, networking, graphics mode, or more shell commands before the P0/P1 items above. Those would increase apparent progress while leaving the most severe hidden-bug surface untouched.
+Do not add filesystem, networking, graphics mode, or more shell commands before the remaining core-risk items above. Those would increase apparent progress while leaving severe hidden-bug surface untouched.
 
 ## External Practice Mapping
 

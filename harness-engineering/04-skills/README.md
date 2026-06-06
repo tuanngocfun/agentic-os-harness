@@ -225,7 +225,7 @@ Mỗi skill phải có:
 1. Pick exactly one route from `harness_profile.yaml`.
 2. Keep the diff inside that route unless the handoff explicitly explains why a second route is necessary.
 3. Never upgrade a subsystem from scaffold/partial to working without a targeted runtime gate.
-4. Prefer current P0/P1 tasks: timer preemption proof, process address-space isolation, memory allocator proof, per-process paging proof, and user-mode syscall negative paths.
+4. Prefer current core-risk tasks: user-mode syscall negative paths, E820/frame lifecycle hardening, and scheduler safety/fairness evidence.
 5. Do not add filesystem, networking, graphics, or more shell breadth before those tasks.
 
 **Verification:**

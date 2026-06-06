@@ -2,7 +2,7 @@
 
 ## Project Overview
 x86 bare metal teaching operating system written in C and x86 assembly (NASM syntax).
-Runs on QEMU i386 emulator. Has QEMU-validated boot, shell `help`, syscall ABI, exception panic, paging, scheduler, memory-detection, ring-3 user-mode, and shell `echo ok` gates. These are evidence-scoped proofs, not a complete operating system claim.
+Runs on QEMU i386 emulator. Has QEMU-validated boot, shell `help`, syscall ABI, ring-3 syscall negative paths, exception panic, paging, cooperative scheduler, timer preemption, scheduler priority/fairness safety proof, E820 memory-map detection, physical frame allocator lifecycle, heap allocator, ring-3 user-mode, per-process address-space switching, and shell `echo ok` gates. These are evidence-scoped proofs, not a complete operating system claim.
 Before advanced core work, read `harness-engineering/harness_profile.yaml` and `harness-engineering/13-agent-routing-and-risk/README.md`.
 
 ## Tech Stack
@@ -72,9 +72,9 @@ make clean
 - Optional markers: `TESTS_PASS`
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 - Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and `help` rendering.
-- `make test-deep` adds syscall ABI, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, CMOS/QEMU memory-size detection, ring-3 user-mode transition with user/supervisor page fault, timer ticks, and `echo ok` shell I/O.
-- Still not proven: timer-driven preemptive scheduling, per-process address-space isolation, memory allocator correctness, full memory map handling, filesystem, networking, or graphics.
-- Current next work order: timer preemption proof, process address-space isolation proof, memory allocator proof, per-process paging proof, user-mode syscall negative-path proof.
+- `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, and `echo ok` shell I/O.
+- Still not proven: production-grade virtual memory, dynamic heap growth from arbitrary frame runs, SMP-safe scheduling, full userland ABI coverage, filesystem, networking, or graphics.
+- Current next work order: keep the core gates green under broader stress/static review before adding filesystem or other breadth.
 
 ## Memory Map
 | Address | Content |
@@ -85,8 +85,10 @@ make clean
 | 0x1000+ | Kernel binary loaded from generated sector count |
 | 0x90000 | Temporary stack |
 | 0xB8000 | VGA text buffer |
-| 0x100000-0x101FFF | Kernel page directory/table during paging tests |
-| 0x100000+ | Extended memory, future heap after reserved kernel/test frames |
+| 0x100000-0x101FFF | Boot kernel page directory/table |
+| 0x200000-0x2FFFFF | Fixed 1 MiB heap used by `kmalloc`/`kfree` |
+| 0x300000+ | Page-frame allocator pool for page directories/tables/test frames |
+| 0x80000+ | E820 handoff buffer populated by the real-mode bootloader |
 
 ## Things to Avoid
 - KHÔNG dùng `gcc` thường — dùng `i686-elf-gcc`
@@ -100,8 +102,8 @@ make clean
 - KHÔNG dùng `-serial mon:stdio` as automated evidence channel
 - KHÔNG chạy QEMU bằng root
 - KHÔNG passthrough host disks/devices vào QEMU boot tests
-- KHÔNG add filesystem/networking/graphics or extra shell breadth before the P0/P1 core-risk tasks in `harness_profile.yaml`
-- KHÔNG claim timer preemption, process isolation, full memory protection, or allocator correctness without a targeted runtime test and updated claim status
+- KHÔNG add filesystem/networking/graphics or extra shell breadth before the core-risk gates in `harness_profile.yaml` stay green
+- KHÔNG claim full memory protection, full userland syscall coverage, production-grade frame/heap management, filesystem, networking, or graphics without targeted runtime tests and updated claim status
 
 ## Available Skills
 - `write-bootloader` — Viết/sửa flat boot sector 512 bytes

@@ -5,7 +5,9 @@
 #include "idt.h"
 #include "keyboard.h"
 #include "timer.h"
+#include "e820.h"
 #include "memory.h"
+#include "frame.h"
 #include "allocator.h"
 #include "paging.h"
 #include "tss.h"
@@ -75,6 +77,72 @@ static void preempt_task_b(void) {
 }
 #endif
 
+#ifdef ENABLE_SCHEDULER_SAFETY_SELFTEST
+static volatile uint32_t safety_high_ran = 0;
+static volatile uint32_t safety_low_a_ran = 0;
+static volatile uint32_t safety_low_b_ran = 0;
+static volatile int safety_priority_printed = 0;
+static volatile int safety_fairness_printed = 0;
+static volatile int safety_ok_printed = 0;
+
+static void scheduler_safety_maybe_report(void) {
+    if (!safety_priority_printed &&
+        safety_high_ran >= 2 &&
+        safety_high_ran > safety_low_a_ran &&
+        safety_high_ran > safety_low_b_ran) {
+        safety_priority_printed = 1;
+        serial_puts("SCHED_PRIORITY_OK\n");
+    }
+
+    if (!safety_fairness_printed &&
+        safety_high_ran >= 2 &&
+        safety_low_a_ran >= 2 &&
+        safety_low_b_ran >= 2) {
+        safety_fairness_printed = 1;
+        serial_puts("SCHED_FAIRNESS_OK\n");
+    }
+
+    if (!safety_ok_printed && safety_priority_printed && safety_fairness_printed) {
+        safety_ok_printed = 1;
+        serial_puts("SCHED_CRITICAL_OK\n");
+        serial_puts("SCHED_SAFETY_OK\n");
+    }
+}
+
+static void scheduler_safety_high_task(void) {
+    while (1) {
+        if (safety_high_ran < 16) {
+            safety_high_ran++;
+        }
+        scheduler_safety_maybe_report();
+        for (volatile int i = 0; i < 200000; i++) {
+        }
+    }
+}
+
+static void scheduler_safety_low_a_task(void) {
+    while (1) {
+        if (safety_low_a_ran < 16) {
+            safety_low_a_ran++;
+        }
+        scheduler_safety_maybe_report();
+        for (volatile int i = 0; i < 200000; i++) {
+        }
+    }
+}
+
+static void scheduler_safety_low_b_task(void) {
+    while (1) {
+        if (safety_low_b_ran < 16) {
+            safety_low_b_ran++;
+        }
+        scheduler_safety_maybe_report();
+        for (volatile int i = 0; i < 200000; i++) {
+        }
+    }
+}
+#endif
+
 #ifdef ENABLE_ADDRESS_SPACE_SELFTEST
 #define ADDRSPACE_TEST_VA 0x00800000
 
@@ -85,12 +153,14 @@ static void address_space_dummy_task(void) {
 }
 #endif
 
+#if defined(ENABLE_USERMODE_SELFTEST) || defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST)
+extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
+#endif
+
 #ifdef ENABLE_USERMODE_SELFTEST
 #define USERMODE_STACK_PHYSICAL 0x00900000
 #define USERMODE_SUPERVISOR_PROBE_ADDR 0x00700000
 #define USERMODE_SUPERVISOR_PROBE_PHYSICAL 0x00910000
-
-extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
 
 static __attribute__((noreturn)) void usermode_selftest_entry(void) {
     uint32_t result;
@@ -109,6 +179,76 @@ static __attribute__((noreturn)) void usermode_selftest_entry(void) {
 }
 #endif
 
+#ifdef ENABLE_SYSCALL_NEGATIVE_SELFTEST
+#define SYSCALL_NEG_STACK_PHYSICAL 0x00930000
+#define SYSCALL_NEG_UNMAPPED_USER_PTR 0x40000000
+
+static void syscall_marker(uint32_t marker) {
+    uint32_t ignored;
+    asm volatile(
+        "int $0x80"
+        : "=a"(ignored)
+        : "a"(SYS_TEST_MARKER), "b"(marker), "c"(0), "d"(0)
+    );
+    (void)ignored;
+}
+
+static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
+    uint32_t result;
+
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(999), "b"(0), "c"(0), "d"(0)
+    );
+    if (result == SYSCALL_ENOSYS) {
+        syscall_marker(SYSCALL_MARK_INVALID_NUM);
+    }
+
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(0), "b"(0), "c"(0), "d"(0)
+    );
+    if (result == SYSCALL_ENOSYS) {
+        syscall_marker(SYSCALL_MARK_ZERO_NUM);
+    }
+
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(SYS_PUTS), "b"(0x00100000), "c"(0), "d"(0)
+    );
+    if (result == SYSCALL_EFAULT) {
+        syscall_marker(SYSCALL_MARK_BAD_POINTER);
+    }
+
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(SYS_PUTS), "b"(SYSCALL_NEG_UNMAPPED_USER_PTR), "c"(0), "d"(0)
+    );
+    if (result == SYSCALL_EFAULT) {
+        syscall_marker(SYSCALL_MARK_UNMAPPED_POINTER);
+    }
+
+    char ok[] = "syscall-ok";
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(SYS_PUTS), "b"(ok), "c"(0), "d"(0)
+    );
+    if (result == SYSCALL_SUCCESS) {
+        syscall_marker(SYSCALL_MARK_RING3_OK);
+    }
+
+    syscall_marker(SYSCALL_MARK_DONE);
+
+    while (1) {
+    }
+}
+#endif
+
 void kernel_main(void) {
     serial_init();
     serial_puts("KERNEL_INIT_OK\n");
@@ -120,7 +260,10 @@ void kernel_main(void) {
     idt_init();
     timer_init(100);
     keyboard_init();
+
+    e820_init();
     memory_init();
+    frame_init();
     paging_init();
     allocator_init();
     tss_init();
@@ -138,6 +281,85 @@ void kernel_main(void) {
             serial_puts("MEMORY_DETECT_OK\n");
         } else {
             serial_puts("MEMORY_DETECT_FAIL\n");
+        }
+    }
+#endif
+
+#ifdef ENABLE_E820_SELFTEST
+    {
+        serial_puts("E820_TEST\n");
+        e820_print_map();
+
+        // Check if E820 detected memory
+        struct e820_map *map = e820_get_map();
+        if (map->count > 0) {
+            serial_puts("E820_DETECT_OK\n");
+        } else {
+            serial_puts("E820_DETECT_FAIL\n");
+        }
+
+        // Check for usable memory
+        uint64_t usable = e820_get_total_usable_memory();
+        if (usable >= (16 * 1024 * 1024)) {  // At least 16MB
+            serial_puts("E820_USABLE_MEMORY_OK\n");
+        } else {
+            serial_puts("E820_USABLE_MEMORY_FAIL\n");
+        }
+
+        uint32_t total_frames = frame_get_total_count();
+        uint32_t free_before = frame_get_free_count();
+        uint32_t frame1 = frame_alloc();
+        uint32_t frame2 = frame_alloc();
+        int frame_alloc_ok = frame1 && frame2 && frame1 != frame2 &&
+                             frame_is_allocated(frame1) &&
+                             frame_is_allocated(frame2) &&
+                             frame_get_free_count() + 2 == free_before;
+        if (frame_alloc_ok) {
+            serial_puts("FRAME_ALLOC_OK\n");
+        }
+
+        frame_free(frame1);
+        int frame_free_ok = frame_get_free_count() + 1 == free_before;
+        if (frame_free_ok) {
+            serial_puts("FRAME_FREE_OK\n");
+        }
+
+        uint32_t frame3 = frame_alloc();
+        int frame_reuse_ok = frame3 == frame1;
+        if (frame_reuse_ok) {
+            serial_puts("FRAME_REUSE_OK\n");
+        }
+
+        frame_free(frame2);
+        frame_free(frame3);
+
+        uint32_t low_frames[320];
+        uint32_t low_count = 0;
+        while (low_count < 320) {
+            uint32_t frame = frame_alloc_below(0x00400000);
+            if (!frame) {
+                break;
+            }
+            low_frames[low_count++] = frame;
+        }
+
+        int frame_exhaust_ok = low_count > 32 && frame_alloc_below(0x00400000) == 0;
+        if (frame_exhaust_ok) {
+            serial_puts("FRAME_EXHAUST_OK\n");
+        }
+
+        while (low_count > 0) {
+            frame_free(low_frames[--low_count]);
+        }
+
+        if (map->count > 0 && usable >= (16 * 1024 * 1024) &&
+            total_frames > 0 && frame_alloc_ok && frame_free_ok &&
+            frame_reuse_ok && frame_exhaust_ok &&
+            frame_get_free_count() == free_before) {
+            serial_puts("E820_FRAME_OK\n");
+            serial_puts("E820_OK\n");
+        } else {
+            serial_puts("E820_FRAME_FAIL\n");
         }
     }
 #endif
@@ -182,55 +404,21 @@ void kernel_main(void) {
 #ifdef ENABLE_SYSCALL_NEGATIVE_SELFTEST
     {
         serial_puts("SYSCALL_NEGATIVE_TEST\n");
-        uint32_t result;
 
-        // Test 1: Invalid syscall number (too high)
-        asm volatile(
-            "int $0x80"
-            : "=a"(result)
-            : "a"(999), "b"(0), "c"(0), "d"(0)
-        );
-        if (result == SYSCALL_ENOSYS) {
-            serial_puts("SYSCALL_INVALID_NUM_OK\n");
-        } else {
-            serial_puts("SYSCALL_INVALID_NUM_FAIL\n");
+        uint32_t user_code_page = ((uint32_t)syscall_negative_user_entry) & 0xFFFFF000;
+        uint32_t user_stack_page = USER_STACK_TOP - 4096;
+
+        paging_map_page(user_code_page, user_code_page, PAGE_PRESENT | PAGE_USER);
+        paging_map_page(user_stack_page,
+                        SYSCALL_NEG_STACK_PHYSICAL,
+                        PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+
+        enter_user_mode((uint32_t)syscall_negative_user_entry, USER_STACK_TOP);
+
+        serial_puts("SYSCALL_NEGATIVE_FAIL\n");
+        while (1) {
+            asm volatile("cli; hlt");
         }
-
-        // Test 2: Invalid syscall number (zero)
-        asm volatile(
-            "int $0x80"
-            : "=a"(result)
-            : "a"(0), "b"(0), "c"(0), "d"(0)
-        );
-        if (result == SYSCALL_ENOSYS) {
-            serial_puts("SYSCALL_ZERO_NUM_OK\n");
-        }
-
-        // Test 3: Bad pointer (kernel space) for SYS_PUTS
-        asm volatile(
-            "int $0x80"
-            : "=a"(result)
-            : "a"(SYS_PUTS), "b"(0x00100000), "c"(0), "d"(0)  // Kernel space
-        );
-        if (result == SYSCALL_EFAULT) {
-            serial_puts("SYSCALL_BAD_POINTER_OK\n");
-        } else {
-            serial_puts("SYSCALL_BAD_POINTER_FAIL\n");
-        }
-
-        // Test 4: Ring check - SYS_USERMODE_TEST from ring 0 should fail
-        asm volatile(
-            "int $0x80"
-            : "=a"(result)
-            : "a"(SYS_USERMODE_TEST), "b"(0xCAFEBABE), "c"(0), "d"(0)
-        );
-        if (result == SYSCALL_EPERM) {
-            serial_puts("SYSCALL_RING_CHECK_OK\n");
-        } else {
-            serial_puts("SYSCALL_RING_CHECK_FAIL\n");
-        }
-
-        serial_puts("SYSCALL_NEGATIVE_OK\n");
     }
 #endif
 
@@ -374,6 +562,48 @@ void kernel_main(void) {
 
         scheduler_init();
         process_init();
+    }
+#endif
+
+#ifdef ENABLE_SCHEDULER_SAFETY_SELFTEST
+    {
+        serial_puts("SCHED_SAFETY_TEST\n");
+
+        asm volatile("cli");
+        process_init();
+        scheduler_init();
+
+        safety_high_ran = 0;
+        safety_low_a_ran = 0;
+        safety_low_b_ran = 0;
+        safety_priority_printed = 0;
+        safety_fairness_printed = 0;
+        safety_ok_printed = 0;
+
+        struct process *high = process_create_preemptive((uint32_t)scheduler_safety_high_task);
+        struct process *low_a = process_create_preemptive((uint32_t)scheduler_safety_low_a_task);
+        struct process *low_b = process_create_preemptive((uint32_t)scheduler_safety_low_b_task);
+
+        if (!high || !low_a || !low_b) {
+            serial_puts("SCHED_SAFETY_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+
+        scheduler_set_priority(high, 4);
+        scheduler_set_priority(low_a, 1);
+        scheduler_set_priority(low_b, 1);
+
+        scheduler_add(high);
+        scheduler_add(low_a);
+        scheduler_add(low_b);
+        scheduler_set_preemption_enabled(1);
+        asm volatile("sti");
+
+        while (1) {
+            asm volatile("hlt");
+        }
     }
 #endif
 

@@ -112,6 +112,12 @@ Commands:
 - `make test-memory`
 - `make test-usermode`
 - `make test-timer`
+- `make test-timer-preemption`
+- `make test-allocator`
+- `make test-address-space`
+- `make test-syscall-negative`
+- `make test-e820-frame`
+- `make test-scheduler-safety`
 - `make test-shell-io`
 - `make clean`
 - `.agent/skills/git-change-management/scripts/git_preflight.sh`
@@ -123,10 +129,10 @@ Markers:
 
 Runtime evidence:
 - Shell: `scripts/shell_test.sh` must prove keyboard input, command dispatch, and VGA output for `help`. `scripts/shell_io_test.sh` separately proves `echo ok` with `SHELL_ECHO_OK` and a distinct VGA output line.
-- Syscall: `scripts/syscall_test.sh` proves only the current `int 0x80` ABI contract.
+- Syscall: `scripts/syscall_test.sh` proves the current `int 0x80` ABI contract. `scripts/syscall_negative_test.sh` proves ring-3 valid syscall execution plus controlled `ENOSYS`/`EFAULT` negative paths for invalid syscall numbers, kernel pointers, and unmapped user pointers.
 - Exception panic: `scripts/exception_test.sh` proves divide-by-zero, invalid-opcode, GPF, and page-fault structured panic paths via `KERNEL_PANIC:<vector>:<code>` markers.
-- Scheduler: `scripts/scheduler_test.sh` proves ready-queue rotation and explicit cooperative context execution through `SCHED_A`, `SCHED_B`, and `SCHED_CONTEXT_OK`; it does not prove timer preemption.
+- Scheduler: `scripts/scheduler_test.sh` proves ready-queue rotation and explicit cooperative context execution through `SCHED_A`, `SCHED_B`, and `SCHED_CONTEXT_OK`. `scripts/timer_preemption_test.sh` proves IRQ0-driven preemption by running two non-yielding tasks and requiring `PREEMPT_A`, `PREEMPT_B`, and `PREEMPT_OK`. `scripts/scheduler_safety_test.sh` proves the current priority/fairness/critical-section safety markers.
 - Timer: `scripts/timer_test.sh` proves only that PIT-backed ticks increment during the targeted selftest.
-- Paging: `scripts/paging_test.sh` proves map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write fault, and unmap+invlpg fault evidence. `scripts/usermode_test.sh` adds user/supervisor page-fault proof from ring 3. This still does not prove process isolation or full memory protection.
-- Memory: `scripts/memory_test.sh` proves CMOS/QEMU memory-size detection for the configured 512 MiB run, not an E820 map or allocator.
-- Process/user mode: `scripts/usermode_test.sh` proves process-record setup for a ring-3 entry and controlled user/supervisor page fault, not process isolation or complete userland.
+- Paging: `scripts/paging_test.sh` proves map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write fault, and unmap+invlpg fault evidence. `scripts/usermode_test.sh` adds user/supervisor page-fault proof from ring 3. `scripts/address_space_test.sh` proves separate CR3 values and isolated physical frames behind the same virtual address.
+- Memory: `scripts/memory_test.sh` proves usable-memory detection for the configured 512 MiB run. `scripts/e820_test.sh` proves E820 map handoff plus physical frame allocation/free/reuse/exhaustion markers. `scripts/allocator_test.sh` proves the fixed heap allocator's allocation, reuse, free/coalescing accounting, and exhaustion handling.
+- Process/user mode: `scripts/usermode_test.sh` proves process-record setup for a ring-3 entry and controlled user/supervisor page fault. `scripts/address_space_test.sh` proves per-process address-space switching and isolation for kernel-scheduled process records.

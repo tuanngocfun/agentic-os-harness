@@ -1,6 +1,6 @@
 profile_version: "2026-06-02"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_advanced_core_scaffold"
+project_phase: "boot_to_shell_proven_preemptive_memory_core_scaffold"
 source_of_truth: true
 
 format_policy:
@@ -40,12 +40,14 @@ claim_status:
   shell_help: "claimable_with_shell_runtime_test"
   shell_echo: "claimable_with_shell_io_test"
   timer_ticks: "claimable_with_timer_test"
-  memory_info: "claimable_with_memory_detection_test"
-  paging: "partial_claimable_map_unmap_permission_fault_invalidation_user_supervisor_test"
-  syscall: "claimable_with_syscall_test"
+  memory_info: "claimable_with_e820_memory_detection_test"
+  frame_allocator: "claimable_with_e820_frame_lifecycle_test"
+  allocator: "claimable_with_allocator_runtime_test"
+  paging: "claimable_with_map_fault_user_supervisor_and_address_space_tests"
+  syscall: "claimable_with_syscall_and_ring3_negative_path_tests"
   exception_panic: "claimable_with_exception_test_suite"
-  process: "partial_claimable_user_process_record_ring3_entry_test"
-  scheduler: "claimable_with_scheduler_explicit_context_switch_test"
+  process: "claimable_with_user_process_record_ring3_entry_and_address_space_isolation_tests"
+  scheduler: "claimable_with_scheduler_preemption_priority_fairness_tests"
   user_mode: "claimable_with_usermode_ring3_test"
   filesystem: "not_started"
   networking: "not_started"
@@ -65,16 +67,19 @@ deep_gates:
   - "paging_map_unmap_permission_fault_invalidation_test"
   - "paging_user_supervisor_isolation_test"
   - "memory_detection_runtime_test"
+  - "e820_memory_map_test"
+  - "frame_allocator_lifecycle_test"
   - "process_user_mode_transition_test"
   - "timer_ticks_runtime_assertion"
-  - "shell_command_io_stable_test"
-
-pending_deep_gates:
-  - "scheduler_timer_preemption_proof"
-  - "process_address_space_isolation_test"
+  - "timer_preemption_runtime_test"
   - "memory_allocator_runtime_test"
+  - "process_address_space_isolation_test"
   - "paging_per_process_address_space_test"
   - "syscall_user_mode_negative_path_test"
+  - "scheduler_priority_fairness_safety_test"
+  - "shell_command_io_stable_test"
+
+pending_deep_gates: []
 
 routes:
   harness_only:
@@ -118,6 +123,9 @@ routes:
       - "kernel/process.c"
       - "kernel/scheduler.c"
       - "kernel/paging.c"
+      - "kernel/e820.c"
+      - "kernel/frame.c"
+      - "kernel/memory.c"
       - "kernel/tss.c"
       - "kernel/usermode.asm"
       - "include/"
@@ -129,21 +137,9 @@ routes:
       - "panic_or_fault_evidence_for_negative_paths"
 
 mimo_next_tasks:
-  - id: "scheduler-timer-preemption-proof"
-    priority: "P1"
-    success: "A targeted gate wires PIT timer delivery into scheduling and proves preemptive task execution without relying on cooperative yield only."
-  - id: "process-address-space-isolation-proof"
-    priority: "P1"
-    success: "A targeted gate proves separate process address spaces cannot read or write each other through user-mode mappings."
-  - id: "memory-allocator-proof"
-    priority: "P1"
-    success: "A runtime gate proves frame allocation/free behavior and exhaustion handling against the detected memory source."
-  - id: "paging-per-process-address-space-proof"
+  - id: "core-stress-and-static-hardening"
     priority: "P2"
-    success: "A targeted gate proves per-process page directories or equivalent isolation, not only a single global page table."
-  - id: "syscall-user-mode-negative-path-proof"
-    priority: "P2"
-    success: "A ring-3 syscall gate proves valid user syscalls and invalid syscall numbers/arguments return controlled errors without kernel panic."
+    success: "Repeat the proven syscall, scheduler, paging, E820, frame, and allocator gates under broader stress/static checks before adding new OS breadth."
 
 forbidden_next_breadth:
   - "filesystem"

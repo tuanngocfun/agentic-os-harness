@@ -5,13 +5,15 @@
 **Target:** /home/ngocnt/operating_system/os  
 **Previous Agent:** GPT-5.5
 
+**Superseded note (2026-06-05):** This audit is historical. Its `0xFC` PIC-mask interpretation was wrong: mask bit `0` enables an IRQ, so `0xFC` enables IRQ0 and IRQ1. Timer preemption, address-space isolation, and fixed-heap allocator proofs have since been implemented and validated. Current truth is `harness-engineering/harness_profile.yaml`, `TIMER_PREEMPTION_STATUS.md`, and `P0_CRITICAL_FIXES.md`.
+
 ---
 
 ## Executive Summary
 
 GPT-5.5's announcement is **mostly honest** but contains **subtle overclaims** and leaves **critical P1 work incomplete**. The harness engineering discipline caught most of the bullshit, but several foundational OS features are **claimed as "partial" when they're actually stub-level**.
 
-**Verdict:** 70% success rate. Tests pass, but the OS is **not production-ready** and lacks real preemptive multitasking, memory isolation, and a working allocator.
+**Historical verdict:** 70% success rate at the time of this audit. The original production-readiness warning still applies, but the specific preemption/isolation/allocator gaps were later narrowed by targeted gates.
 
 ---
 
@@ -27,7 +29,7 @@ GPT-5.5's announcement is **mostly honest** but contains **subtle overclaims** a
 - **Claim:** Added real scheduler with SCHED_A, SCHED_B, SCHED_CONTEXT_OK markers
 - **Reality:** `make test-scheduler` produces evidence with task execution markers
 - **Evidence:** Latest passing run shows `SCHED_A: true, SCHED_B: true, SCHED_CONTEXT_OK: true`
-- **Caveat:** This is **cooperative scheduling only**. No timer preemption.
+- **Superseded caveat:** This was cooperative scheduling only at audit time; `make test-timer-preemption` now separately proves IRQ0-driven preemption.
 - **Verdict:** **HONEST within scope**. Claims say "explicit context switch test", not preemptive.
 
 ### 3. **Memory Detection (CMOS/QEMU)** ✓ TRUE
@@ -66,7 +68,7 @@ GPT-5.5's announcement is **mostly honest** but contains **subtle overclaims** a
   - `kernel/timer.c:14` has `timer_handler()` that increments `timer_ticks`
   - `kernel/scheduler.c:63` has `scheduler_tick()` stub
   - **BUT:** IRQ 0 (timer) is **never wired to call scheduler_tick()**
-  - PIC mask in `idt.c:53` sets `outb(0x21, 0xFC)` which **masks IRQ0** (timer is disabled!)
+  - Superseded correction: PIC mask `0xFC` was misread here. It enables IRQ0 and IRQ1 because mask bit `0` means enabled.
 - **Verdict:** **CLAIMED AS "REMAINING WORK" BUT ACTUALLY BROKEN**. The timer increments a counter but **never triggers context switches**. Scheduler is purely cooperative (manual `yield()`).
 
 ### 2. **Per-Process Address-Space Isolation** ✗ STUB ONLY
@@ -142,7 +144,7 @@ GPT-5.5's announcement is **mostly honest** but contains **subtle overclaims** a
 **Why Critical:** Without preemption, a misbehaving process can **hog the CPU forever**. Cooperative `yield()` is a toy.
 
 **What's Needed:**
-1. Unmask IRQ0 in PIC (change `idt.c:53` from `0xFC` to `0xFE`)
+1. Keep IRQ0 enabled in PIC (`0xFC` enables IRQ0 and IRQ1) and prove preemption through the timer gate.
 2. Wire IRQ32 (timer) to call `scheduler_tick()` → `scheduler_schedule()` → `context_switch()`
 3. Save/restore full CPU state (not just ESP) during preemptive switch
 4. Add test: create two processes, one never calls `yield()`, prove both get CPU time
@@ -220,7 +222,7 @@ GPT-5.5's announcement is **mostly honest** but contains **subtle overclaims** a
 
 ### Misleading/Incomplete Claims (3/10)
 1. ✗ "Validation passed" — True, but tests don't cover **unimplemented features**
-2. ✗ "Remaining honest next work is timer preemption..." — Timer IRQ is **masked**, this is broken, not just "next work"
+2. Superseded: "Remaining honest next work is timer preemption..." was later handled; the old "IRQ is masked" diagnosis was incorrect.
 3. ⚠️ "per-process paging" listed as P2 when it's **actually P1** (no isolation = security hole)
 
 ### Overall Accuracy: **70%**

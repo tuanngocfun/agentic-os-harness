@@ -93,6 +93,12 @@ Deep gates are explicit and may rebuild with selftest defines:
 - `make test-memory`
 - `make test-usermode`
 - `make test-timer`
+- `make test-timer-preemption`
+- `make test-allocator`
+- `make test-address-space`
+- `make test-syscall-negative`
+- `make test-e820-frame`
+- `make test-scheduler-safety`
 - `make test-shell-io`
 
 Rules:
@@ -117,13 +123,16 @@ Current claim policy:
 - `bootloader`, `protected_mode_entry`, `serial_markers`, `keyboard_irq`, and `shell_help` are claimable with current default gates.
 - `syscall` and `exception_panic` are claimable only through their targeted deep gates.
 - `timer_ticks` is claimable only through `make test-timer`.
-- `paging` is partially claimable as map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write-fault evidence, unmap+invlpg fault evidence, and user/supervisor enforcement through the ring-3 page-fault gate. Do not claim process isolation or full memory protection yet.
-- `scheduler` is claimable only as ready-queue rotation plus explicit cooperative context execution through `make test-scheduler`. Do not claim timer-driven preemptive scheduling yet.
-- `memory_info` is claimable only as CMOS/QEMU memory-size detection through `make test-memory`; this is not an E820 map or allocator proof.
-- `process` is partially claimable only as process-record setup feeding a ring-3 user-mode transition through `make test-usermode`. Do not claim process isolation yet.
+- `paging` is claimable for map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write-fault evidence, unmap+invlpg fault evidence, user/supervisor enforcement through the ring-3 page-fault gate, and per-process CR3 isolation through `make test-address-space`. Do not claim complete memory protection yet.
+- `syscall` is claimable for the ABI through `make test-syscall` and for ring-3 negative paths through `make test-syscall-negative`.
+- `scheduler` is claimable as ready-queue rotation, explicit cooperative context execution through `make test-scheduler`, IRQ0 timer preemption through `make test-timer-preemption`, and priority/fairness/critical-section evidence through `make test-scheduler-safety`.
+- `memory_info` is claimable as E820-backed usable-memory detection through `make test-memory` and `make test-e820-frame`.
+- `frame_allocator` is claimable for allocation, free accounting, reuse, and low-frame exhaustion through `make test-e820-frame`.
+- `allocator` is claimable only as fixed-heap `kmalloc`/`kfree` allocation, reuse, free/coalescing accounting, and exhaustion through `make test-allocator`; it is not frame free/reuse accounting.
+- `process` is claimable for process-record setup feeding a ring-3 user-mode transition through `make test-usermode` and per-process address-space switching through `make test-address-space`.
 - `user_mode` is claimable only as a ring-3 transition and user/supervisor page-fault proof through `make test-usermode`.
 - Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. `scripts/shell_io_test.sh` is the separate targeted route for `echo ok`; argument-bearing commands beyond that need their own unambiguous I/O proof.
-- Filesystem, networking, graphics mode, and additional shell breadth are forbidden next work until the P0/P1 core-risk queue is handled.
+- Filesystem, networking, graphics mode, and additional shell breadth remain forbidden until the core-risk gates stay green under review.
 
 ## Build-Config Rebuild Protocol
 

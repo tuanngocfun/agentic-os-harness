@@ -52,6 +52,12 @@ require_file "../scripts/paging_test.sh"
 require_file "../scripts/memory_test.sh"
 require_file "../scripts/usermode_test.sh"
 require_file "../scripts/timer_test.sh"
+require_file "../scripts/timer_preemption_test.sh"
+require_file "../scripts/allocator_test.sh"
+require_file "../scripts/address_space_test.sh"
+require_file "../scripts/syscall_negative_test.sh"
+require_file "../scripts/e820_test.sh"
+require_file "../scripts/scheduler_safety_test.sh"
 require_file "../scripts/shell_io_test.sh"
 
 require_grep 'AGENTS[.]md' "llms.txt"
@@ -72,12 +78,17 @@ require_grep 'FORCE' "$REPO_ROOT/Makefile"
 require_grep 'kernel_sector_limit:[[:space:]]*120' "harness_profile.yaml"
 require_grep 'loader:[[:space:]]*"phase1_bios_geometry_chs"' "harness_profile.yaml"
 require_grep 'detect_drive_geometry|SECTORS_PER_TRACK|LAST_HEAD' "$REPO_ROOT/boot/boot.asm"
-require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_advanced_core_scaffold"' "harness_profile.yaml"
+require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_preemptive_memory_core_scaffold"' "harness_profile.yaml"
 require_grep 'format_policy:' "harness_profile.yaml"
 require_grep 'runtime_evidence:[[:space:]]*"jsonl"' "harness_profile.yaml"
 require_grep 'claim_status:' "harness_profile.yaml"
 if grep -q 'ENABLE_SYSCALL_ABI_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-syscall' "$REPO_ROOT/Makefile" && grep -q 'SYSCALL_ABI_OK:ARGS_OK' "$REPO_ROOT/scripts/syscall_test.sh"; then
-  require_grep 'syscall:[[:space:]]*"claimable_with_syscall_test"' "harness_profile.yaml"
+  if grep -q 'ENABLE_SYSCALL_NEGATIVE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'SYS_TEST_MARKER' "$REPO_ROOT/include/syscall.h" && grep -q 'test-syscall-negative' "$REPO_ROOT/Makefile" && grep -q 'SYSCALL_UNMAPPED_POINTER_OK' "$REPO_ROOT/scripts/syscall_negative_test.sh"; then
+    require_grep 'syscall:[[:space:]]*"claimable_with_syscall_and_ring3_negative_path_tests"' "harness_profile.yaml"
+    require_grep 'test-deep:.*test-syscall-negative' "$REPO_ROOT/Makefile"
+  else
+    require_grep 'syscall:[[:space:]]*"claimable_with_syscall_test"' "harness_profile.yaml"
+  fi
 else
   require_grep 'syscall:[[:space:]]*"not_claimable_syscall_abi_unproven"' "harness_profile.yaml"
 fi
@@ -86,7 +97,15 @@ if grep -q 'ENABLE_EXCEPTION_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q '
   require_grep 'test-deep:.*test-exception-div0.*test-exception-gpf.*test-exception-pagefault' "$REPO_ROOT/Makefile"
 fi
 if grep -q 'ENABLE_SCHEDULER_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-scheduler' "$REPO_ROOT/Makefile" && grep -q 'SCHED_QUEUE_OK' "$REPO_ROOT/scripts/scheduler_test.sh"; then
-  if grep -q 'SCHED_A' "$REPO_ROOT/scripts/scheduler_test.sh" && grep -q 'SCHED_B' "$REPO_ROOT/scripts/scheduler_test.sh" && grep -q 'SCHED_CONTEXT_OK' "$REPO_ROOT/scripts/scheduler_test.sh"; then
+  if grep -q 'ENABLE_TIMER_PREEMPTION_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-timer-preemption' "$REPO_ROOT/Makefile" && grep -q 'PREEMPT_OK' "$REPO_ROOT/scripts/timer_preemption_test.sh"; then
+    if grep -q 'ENABLE_SCHEDULER_SAFETY_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'scheduler_set_priority' "$REPO_ROOT/kernel/scheduler.c" && grep -q 'test-scheduler-safety' "$REPO_ROOT/Makefile" && grep -q 'SCHED_SAFETY_OK' "$REPO_ROOT/scripts/scheduler_safety_test.sh"; then
+      require_grep 'scheduler:[[:space:]]*"claimable_with_scheduler_preemption_priority_fairness_tests"' "harness_profile.yaml"
+      require_grep 'test-deep:.*test-scheduler.*test-timer-preemption.*test-scheduler-safety' "$REPO_ROOT/Makefile"
+    else
+      require_grep 'scheduler:[[:space:]]*"claimable_with_scheduler_explicit_context_switch_and_timer_preemption_tests"' "harness_profile.yaml"
+      require_grep 'test-deep:.*test-scheduler.*test-timer-preemption' "$REPO_ROOT/Makefile"
+    fi
+  elif grep -q 'SCHED_A' "$REPO_ROOT/scripts/scheduler_test.sh" && grep -q 'SCHED_B' "$REPO_ROOT/scripts/scheduler_test.sh" && grep -q 'SCHED_CONTEXT_OK' "$REPO_ROOT/scripts/scheduler_test.sh"; then
     require_grep 'scheduler:[[:space:]]*"claimable_with_scheduler_explicit_context_switch_test"' "harness_profile.yaml"
     require_grep 'test-deep:.*test-scheduler' "$REPO_ROOT/Makefile"
   else
@@ -96,7 +115,10 @@ else
   require_grep 'scheduler:[[:space:]]*"not_claimable_no_timer_driven_context_switch"' "harness_profile.yaml"
 fi
 if grep -q 'ENABLE_PAGING_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-paging' "$REPO_ROOT/Makefile" && grep -q 'PAGING_UNMAP_OK' "$REPO_ROOT/scripts/paging_test.sh"; then
-  if grep -q 'PAGING_USER_SUPERVISOR_FAULT_OK' "$REPO_ROOT/scripts/usermode_test.sh" && grep -q 'test-usermode' "$REPO_ROOT/Makefile"; then
+  if grep -q 'ENABLE_ADDRESS_SPACE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-address-space' "$REPO_ROOT/Makefile" && grep -q 'ADDRSPACE_ISOLATION_OK' "$REPO_ROOT/scripts/address_space_test.sh"; then
+    require_grep 'paging:[[:space:]]*"claimable_with_map_fault_user_supervisor_and_address_space_tests"' "harness_profile.yaml"
+    require_grep 'test-deep:.*test-address-space' "$REPO_ROOT/Makefile"
+  elif grep -q 'PAGING_USER_SUPERVISOR_FAULT_OK' "$REPO_ROOT/scripts/usermode_test.sh" && grep -q 'test-usermode' "$REPO_ROOT/Makefile"; then
     require_grep 'paging:[[:space:]]*"partial_claimable_map_unmap_permission_fault_invalidation_user_supervisor_test"' "harness_profile.yaml"
     require_grep 'test-deep:.*test-usermode' "$REPO_ROOT/Makefile"
   elif grep -q 'PAGING_WRITE_FAULT_OK' "$REPO_ROOT/scripts/paging_test.sh" && grep -q 'PAGING_UNMAP_FAULT_OK' "$REPO_ROOT/scripts/paging_test.sh" && grep -q '0x00010000' "$REPO_ROOT/kernel/paging.c"; then
@@ -112,14 +134,30 @@ if grep -q 'ENABLE_TIMER_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test
   require_grep 'test-deep:.*test-timer' "$REPO_ROOT/Makefile"
 fi
 if grep -q 'ENABLE_MEMORY_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-memory' "$REPO_ROOT/Makefile" && grep -q 'MEMORY_DETECT_OK' "$REPO_ROOT/scripts/memory_test.sh"; then
-  require_grep 'memory_info:[[:space:]]*"claimable_with_memory_detection_test"' "harness_profile.yaml"
+  if grep -q 'ENABLE_E820_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-e820-frame' "$REPO_ROOT/Makefile" && grep -q 'E820_FRAME_OK' "$REPO_ROOT/scripts/e820_test.sh"; then
+    require_grep 'memory_info:[[:space:]]*"claimable_with_e820_memory_detection_test"' "harness_profile.yaml"
+    require_grep 'frame_allocator:[[:space:]]*"claimable_with_e820_frame_lifecycle_test"' "harness_profile.yaml"
+    require_grep 'test-deep:.*test-e820-frame' "$REPO_ROOT/Makefile"
+  else
+    require_grep 'memory_info:[[:space:]]*"claimable_with_memory_detection_test"' "harness_profile.yaml"
+  fi
   require_grep 'test-deep:.*test-memory' "$REPO_ROOT/Makefile"
 else
   require_grep 'memory_info:[[:space:]]*"stubbed_not_claimable"' "harness_profile.yaml"
 fi
+if grep -q 'ENABLE_ALLOCATOR_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-allocator' "$REPO_ROOT/Makefile" && grep -q 'ALLOCATOR_OK' "$REPO_ROOT/scripts/allocator_test.sh"; then
+  require_grep 'allocator:[[:space:]]*"claimable_with_allocator_runtime_test"' "harness_profile.yaml"
+  require_grep 'test-deep:.*test-allocator' "$REPO_ROOT/Makefile"
+else
+  require_grep 'allocator:[[:space:]]*"not_claimable_allocator_unproven"' "harness_profile.yaml"
+fi
 if grep -q 'ENABLE_USERMODE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-usermode' "$REPO_ROOT/Makefile" && grep -q 'USERMODE_RING3_OK' "$REPO_ROOT/scripts/usermode_test.sh" && rg -q 'enter_user_mode|switch_to_usermode' "$REPO_ROOT/kernel" "$REPO_ROOT/include" 2>/dev/null; then
   require_grep 'user_mode:[[:space:]]*"claimable_with_usermode_ring3_test"' "harness_profile.yaml"
-  require_grep 'process:[[:space:]]*"partial_claimable_user_process_record_ring3_entry_test"' "harness_profile.yaml"
+  if grep -q 'ENABLE_ADDRESS_SPACE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-address-space' "$REPO_ROOT/Makefile" && grep -q 'ADDRSPACE_ISOLATION_OK' "$REPO_ROOT/scripts/address_space_test.sh"; then
+    require_grep 'process:[[:space:]]*"claimable_with_user_process_record_ring3_entry_and_address_space_isolation_tests"' "harness_profile.yaml"
+  else
+    require_grep 'process:[[:space:]]*"partial_claimable_user_process_record_ring3_entry_test"' "harness_profile.yaml"
+  fi
   require_grep 'test-deep:.*test-usermode' "$REPO_ROOT/Makefile"
 else
   require_grep 'user_mode:[[:space:]]*"not_claimable_no_ring3_transition_test"' "harness_profile.yaml"
@@ -128,9 +166,12 @@ if grep -q 'test-shell-io' "$REPO_ROOT/Makefile" && grep -q 'SHELL_ECHO_OK' "$RE
   require_grep 'shell_echo:[[:space:]]*"claimable_with_shell_io_test"' "harness_profile.yaml"
   require_grep 'test-deep:.*test-shell-io' "$REPO_ROOT/Makefile"
 fi
-require_grep 'scheduler-timer-preemption-proof' "harness_profile.yaml"
-require_grep 'process-address-space-isolation-proof' "harness_profile.yaml"
-require_grep 'memory-allocator-proof' "harness_profile.yaml"
+require_grep 'pending_deep_gates:[[:space:]]*\[\]' "harness_profile.yaml"
+if grep -Eq 'scheduler-timer-preemption-proof|process-address-space-isolation-proof|memory-allocator-proof|paging-per-process-address-space-proof|syscall-user-mode-negative-path-proof|memory-map-and-frame-lifecycle-proof|scheduler-safety-proof' "harness_profile.yaml"; then
+  fail "completed P0/P1/P2 proof tasks are still listed as next work"
+else
+  pass "completed core proof tasks are removed from next work"
+fi
 require_grep 'Do not add filesystem' "13-agent-routing-and-risk/README.md"
 require_grep 'Claim-aware routing matrix|Claim-aware MiMo routing|Routing Matrix' "13-agent-routing-and-risk/README.md"
 require_grep 'Loop Traps Diagnosed' "13-agent-routing-and-risk/README.md"
@@ -140,11 +181,11 @@ require_grep 'Format Contract' "06-validation/README.md"
 require_grep 'harness_profile[.]yaml' "AGENTS.md"
 require_grep 'harness_profile[.]yaml' "06-validation/README.md"
 
-if ! rg -q 'scheduler_tick[[:space:]]*[(]' "$REPO_ROOT/kernel/timer.c" "$REPO_ROOT/kernel/isr.asm" 2>/dev/null; then
-  if grep -Eq 'scheduler:[[:space:]]*".*(timer|preempt)' "harness_profile.yaml"; then
-    fail "scheduler profile overclaims timer-driven preemption"
+if grep -Eq 'scheduler:[[:space:]]*".*(timer|preempt)' "harness_profile.yaml"; then
+  if grep -q 'timer_interrupt' "$REPO_ROOT/kernel/timer.c" && grep -q 'scheduler_preempt' "$REPO_ROOT/kernel/scheduler.c" && grep -q 'PREEMPT_OK' "$REPO_ROOT/scripts/timer_preemption_test.sh"; then
+    pass "scheduler preemption claim is marker-backed"
   else
-    pass "scheduler profile does not overclaim timer-driven preemption"
+    fail "scheduler profile overclaims timer-driven preemption"
   fi
 fi
 
@@ -177,7 +218,7 @@ if command -v rg >/dev/null 2>&1; then
   fi
   rg -n 'no paging test markers|paging semantics verified' "$REPO_ROOT/scripts/paging_test.sh" && fail "paging test can pass without paging proof" || pass "paging test requires map/unmap evidence"
   rg -n 'CONFIG_PAGING_SELFTEST' "$REPO_ROOT/Makefile" "$REPO_ROOT/kernel" "$REPO_ROOT/include" "$REPO_ROOT/scripts" && fail "stale CONFIG_PAGING_SELFTEST flag name found in implementation" || pass "no stale CONFIG_PAGING_SELFTEST implementation flag"
-  rg -n 'scheduler:[[:space:]]*"claimable_with_scheduler_test"|paging:[[:space:]]*"claimable_with_paging_test"|paging:[[:space:]]*"partial_claimable_map_unmap_permission_bookkeeping_test"' "harness_profile.yaml" && fail "harness profile has stale broad or downgraded core claims" || pass "harness profile uses narrowed core claims"
+  rg -n 'scheduler:[[:space:]]*"claimable_with_scheduler_test"|paging:[[:space:]]*"claimable_with_paging_test"|paging:[[:space:]]*"partial_claimable_map_unmap_permission_bookkeeping_test"|memory_info:[[:space:]]*"claimable_with_memory_detection_test"|syscall:[[:space:]]*"claimable_with_syscall_test"' "harness_profile.yaml" && fail "harness profile has stale broad or downgraded core claims" || pass "harness profile uses narrowed core claims"
 else
   fail "rg not installed"
 fi

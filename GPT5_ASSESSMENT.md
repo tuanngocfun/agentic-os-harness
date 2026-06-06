@@ -4,11 +4,13 @@
 **Auditor:** Claude Opus 4.8  
 **Previous Work By:** GPT-5.5 (32 minutes)
 
+**Superseded note (2026-06-05):** This assessment is historical. Its `0xFC` PIC-mask interpretation was wrong: mask bit `0` enables an IRQ, so `0xFC` enables IRQ0 and IRQ1. Timer preemption, address-space isolation, and fixed-heap allocator proofs have since been implemented and validated. Current truth is `harness-engineering/harness_profile.yaml`, `TIMER_PREEMPTION_STATUS.md`, and `P0_CRITICAL_FIXES.md`.
+
 ---
 
 ## TL;DR: What Actually Got Done
 
-GPT-5.5's announcement was **70% accurate**. The harness engineering discipline is excellent, tests pass, but **critical OS features are incomplete**.
+GPT-5.5's announcement was **70% accurate at audit time**. The harness engineering discipline was useful, and the previously incomplete critical OS features have since been narrowed by targeted runtime gates.
 
 ### ✓ COMPLETED (7 features)
 1. Bootloader CHS geometry detection (risk mitigation)
@@ -19,34 +21,33 @@ GPT-5.5's announcement was **70% accurate**. The harness engineering discipline 
 6. Syscall ABI test
 7. Exception handling (div0, GPF, page fault)
 
-### ✗ INCOMPLETE/BROKEN (3 critical features)
-1. **Timer preemption:** IRQ0 is MASKED (0xFC), timer never fires → no preemptive scheduling
-2. **Address-space isolation:** All processes share same page table (CR3=0 always) → no memory protection
-3. **Memory allocator:** Fixed 4MB bitmap + 64KB stack pool → no real heap
+### Superseded critical gaps now covered by targeted gates
+1. **Timer preemption:** `make test-timer-preemption` requires `PREEMPT_A`, `PREEMPT_B`, and `PREEMPT_OK`.
+2. **Address-space isolation:** `make test-address-space` requires distinct CR3 values and same-VA/different-frame isolation.
+3. **Memory allocator:** `make test-allocator` requires allocation, reuse, free/coalescing accounting, exhaustion, and `ALLOCATOR_OK`.
 
 ---
 
 ## Detailed Findings
 
-### 1. Timer Preemption: CLAIMED as "pending work" but ACTUALLY BROKEN
+### 1. Timer Preemption: historical diagnosis corrected
 
-**The Smoking Gun:**
+**Corrected PIC-mask interpretation:**
 ```c
 // kernel/idt.c:53
-outb(0x21, 0xFC);  // Binary: 11111100 → IRQ0 (timer) is MASKED
+outb(0x21, 0xFC);  // Binary: 11111100; IRQ0 and IRQ1 are enabled
 ```
 
 **What This Means:**
 - Timer is configured (100Hz in timer.c)
 - Timer ISR is registered in IDT
-- But PIC masks IRQ0 → **timer interrupts never fire**
-- Scheduler only runs when processes call `yield()` manually
-- This is **1970s cooperative multitasking**, not preemptive
+- The original audit incorrectly treated mask bit `0` as disabled.
+- Current implementation proves both cooperative scheduling and IRQ0-driven preemption.
 
 **Evidence:**
 ```bash
-grep -n "timer_handler\|scheduler_tick" kernel/idt.c
-# (no output — timer not wired to scheduler)
+make test-scheduler
+make test-timer-preemption
 ```
 
 **Impact:** Any process can **hog CPU forever** by not calling yield()
@@ -137,12 +138,10 @@ grep -r "cr3" kernel/*.c
 ### Fix #1: Enable Timer Preemption (30 minutes)
 **File:** `kernel/idt.c:53`
 ```c
-// Change from:
-outb(0x21, 0xFC);  // Masks IRQ0
-
-// To:
-outb(0x21, 0xFE);  // Enables IRQ0 + IRQ1
+outb(0x21, 0xFC);  // Enables IRQ0 + IRQ1
 ```
+
+Superseded: preemption is now implemented and validated by `make test-timer-preemption`.
 
 **Then wire scheduler:**
 ```c
