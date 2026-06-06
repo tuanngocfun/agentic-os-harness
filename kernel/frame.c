@@ -174,6 +174,23 @@ void frame_free(uint32_t phys_addr) {
     }
 }
 
+int frame_reserve_range(uint32_t start_addr, uint32_t end_addr) {
+    if (!frame_initialized || start_addr >= end_addr) {
+        return 0;
+    }
+
+    uint32_t max_addr = total_frames * FRAME_SIZE;
+    if (start_addr >= max_addr) {
+        return 0;
+    }
+    if (end_addr > max_addr) {
+        end_addr = max_addr;
+    }
+
+    mark_allocated(start_addr, end_addr);
+    return 1;
+}
+
 int frame_is_allocated(uint32_t phys_addr) {
     uint32_t frame = phys_addr / FRAME_SIZE;
     if (!frame_initialized || frame >= total_frames) {

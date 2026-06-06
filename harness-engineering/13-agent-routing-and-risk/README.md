@@ -89,11 +89,11 @@ Findings from `considerations/` are part of the routing contract:
    Re-run syscall, scheduler, paging, E820, frame, and allocator gates under broader stress/static review before adding new OS breadth.
 
 2. `storage-or-userland-design`
-   Plan filesystem or userland breadth only after the stage-2 loader and core-risk gates stay green.
+   Plan filesystem or userland breadth only after the stage-2 loader, ramdisk block-device gate, and core-risk gates stay green.
 
 ## Forbidden Next Work
 
-Do not add filesystem, networking, graphics mode, or more shell commands before the remaining core-risk items above. Those would increase apparent progress while leaving severe hidden-bug surface untouched.
+Do not add filesystem claims, networking, graphics mode, or more shell commands without targeted runtime gates. Those would increase apparent progress while leaving severe hidden-bug surface untouched.
 
 ## External Practice Mapping
 

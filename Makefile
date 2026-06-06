@@ -36,6 +36,7 @@ E820_OBJ = $(BUILD_DIR)/e820.o
 MEMORY_OBJ = $(BUILD_DIR)/memory.o
 FRAME_OBJ = $(BUILD_DIR)/frame.o
 ALLOCATOR_OBJ = $(BUILD_DIR)/allocator.o
+RAMDISK_OBJ = $(BUILD_DIR)/ramdisk.o
 SHELL_OBJ = $(BUILD_DIR)/shell.o
 GDT_OBJ = $(BUILD_DIR)/gdt.o
 PAGING_OBJ = $(BUILD_DIR)/paging.o
@@ -44,7 +45,7 @@ SYSCALL_OBJ = $(BUILD_DIR)/syscall.o
 PROCESS_OBJ = $(BUILD_DIR)/process.o
 SCHEDULER_OBJ = $(BUILD_DIR)/scheduler.o
 USERMODE_OBJ = $(BUILD_DIR)/usermode.o
-KERNEL_OBJECTS = $(KERNEL_ENTRY_OBJ) $(ISR_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) $(STRING_OBJ) $(IDT_OBJ) $(KEYBOARD_OBJ) $(TIMER_OBJ) $(E820_OBJ) $(MEMORY_OBJ) $(FRAME_OBJ) $(ALLOCATOR_OBJ) $(GDT_OBJ) $(PAGING_OBJ) $(TSS_OBJ) $(SYSCALL_OBJ) $(PROCESS_OBJ) $(SCHEDULER_OBJ) $(USERMODE_OBJ) $(SHELL_OBJ)
+KERNEL_OBJECTS = $(KERNEL_ENTRY_OBJ) $(ISR_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) $(STRING_OBJ) $(IDT_OBJ) $(KEYBOARD_OBJ) $(TIMER_OBJ) $(E820_OBJ) $(MEMORY_OBJ) $(FRAME_OBJ) $(ALLOCATOR_OBJ) $(RAMDISK_OBJ) $(GDT_OBJ) $(PAGING_OBJ) $(TSS_OBJ) $(SYSCALL_OBJ) $(PROCESS_OBJ) $(SCHEDULER_OBJ) $(USERMODE_OBJ) $(SHELL_OBJ)
 KERNEL_ELF = $(BUILD_DIR)/kernel.elf
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 KERNEL_DEFINES_STAMP = $(BUILD_DIR)/kernel_defines.stamp
@@ -153,6 +154,10 @@ $(ALLOCATOR_OBJ): $(KERNEL_DIR)/allocator.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
+$(RAMDISK_OBJ): $(KERNEL_DIR)/ramdisk.c $(KERNEL_DEFINES_STAMP)
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
 $(GDT_OBJ): $(KERNEL_DIR)/gdt.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
@@ -205,7 +210,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-e820-frame test-scheduler-safety test-shell-io
+test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-e820-frame test-ramdisk test-scheduler-safety test-shell-io
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -275,6 +280,10 @@ test-e820-frame:
 
 test-e820: test-e820-frame
 
+test-ramdisk:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_RAMDISK_SELFTEST
+	@bash scripts/ramdisk_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 test-scheduler-safety:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_SCHEDULER_SAFETY_SELFTEST
 	@bash scripts/scheduler_safety_test.sh; status=$$?; $(MAKE) -B all; exit $$status
@@ -289,4 +298,4 @@ clean: guard-paths
 
 FORCE:
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-e820-frame test-e820 test-scheduler-safety test-shell-io clean FORCE
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-e820-frame test-e820 test-ramdisk test-scheduler-safety test-shell-io clean FORCE

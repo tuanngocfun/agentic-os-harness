@@ -74,7 +74,7 @@ make clean
 - Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and `help` rendering.
 - `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, and `echo ok` shell I/O.
 - Still not proven: production-grade virtual memory, dynamic heap growth from arbitrary frame runs, SMP-safe scheduling, full userland ABI coverage, filesystem, networking, or graphics.
-- Current next work order: keep the core gates green under broader stress/static review before adding filesystem or other breadth.
+- Current next work order: build VFS and a simple filesystem on top of the proven ramdisk block-device gate, while keeping all core gates green.
 
 ## Memory Map
 | Address | Content |
@@ -103,7 +103,7 @@ make clean
 - KHÔNG dùng `-serial mon:stdio` as automated evidence channel
 - KHÔNG chạy QEMU bằng root
 - KHÔNG passthrough host disks/devices vào QEMU boot tests
-- KHÔNG add filesystem/networking/graphics or extra shell breadth before the core-risk gates in `harness_profile.yaml` stay green
+- KHÔNG claim filesystem/networking/graphics or extra shell breadth without targeted runtime tests and updated `harness_profile.yaml` claim status
 - KHÔNG claim full memory protection, full userland syscall coverage, production-grade frame/heap management, filesystem, networking, or graphics without targeted runtime tests and updated claim status
 
 ## Available Skills

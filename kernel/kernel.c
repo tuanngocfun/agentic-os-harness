@@ -9,6 +9,7 @@
 #include "memory.h"
 #include "frame.h"
 #include "allocator.h"
+#include "ramdisk.h"
 #include "paging.h"
 #include "tss.h"
 #include "syscall.h"
@@ -143,6 +144,11 @@ static void scheduler_safety_low_b_task(void) {
 }
 #endif
 
+#ifdef ENABLE_RAMDISK_SELFTEST
+static uint8_t ramdisk_write_buf[SECTOR_SIZE * 4];
+static uint8_t ramdisk_read_buf[SECTOR_SIZE * 4];
+#endif
+
 #ifdef ENABLE_ADDRESS_SPACE_SELFTEST
 #define ADDRSPACE_TEST_VA 0x00800000
 
@@ -266,6 +272,12 @@ void kernel_main(void) {
     frame_init();
     paging_init();
     allocator_init();
+    if (ramdisk_init() != BLKDEV_SUCCESS) {
+        serial_puts("RAMDISK_INIT_FATAL\n");
+        while (1) {
+            asm volatile("cli; hlt");
+        }
+    }
     tss_init();
     syscall_init();
 
@@ -360,6 +372,64 @@ void kernel_main(void) {
             serial_puts("E820_OK\n");
         } else {
             serial_puts("E820_FRAME_FAIL\n");
+        }
+    }
+#endif
+
+#ifdef ENABLE_RAMDISK_SELFTEST
+    {
+        serial_puts("RAMDISK_TEST\n");
+
+        struct block_device *dev = ramdisk_get_device();
+        int init_ok = dev &&
+                      dev->sector_size == SECTOR_SIZE &&
+                      dev->sector_count >= 128 &&
+                      dev->read_sector &&
+                      dev->write_sector &&
+                      dev->read_sectors &&
+                      dev->write_sectors;
+        if (init_ok) {
+            serial_puts("RAMDISK_DEVICE_OK\n");
+        }
+
+        for (uint32_t i = 0; i < SECTOR_SIZE; i++) {
+            ramdisk_write_buf[i] = (uint8_t)(i & 0xFF);
+            ramdisk_read_buf[i] = 0;
+        }
+
+        int basic_ok = init_ok &&
+                       dev->write_sector(dev, 0, ramdisk_write_buf) == BLKDEV_SUCCESS &&
+                       dev->read_sector(dev, 0, ramdisk_read_buf) == BLKDEV_SUCCESS &&
+                       memcmp(ramdisk_write_buf, ramdisk_read_buf, SECTOR_SIZE) == 0;
+        if (basic_ok) {
+            serial_puts("RAMDISK_BASIC_OK\n");
+        }
+
+        for (uint32_t i = 0; i < sizeof(ramdisk_write_buf); i++) {
+            ramdisk_write_buf[i] = (uint8_t)((i / SECTOR_SIZE) + 0x40);
+            ramdisk_read_buf[i] = 0;
+        }
+
+        int multi_ok = init_ok &&
+                       dev->write_sectors(dev, 100, 4, ramdisk_write_buf) == BLKDEV_SUCCESS &&
+                       dev->read_sectors(dev, 100, 4, ramdisk_read_buf) == BLKDEV_SUCCESS &&
+                       memcmp(ramdisk_write_buf, ramdisk_read_buf, sizeof(ramdisk_write_buf)) == 0;
+        if (multi_ok) {
+            serial_puts("RAMDISK_MULTI_OK\n");
+        }
+
+        int bounds_ok = init_ok &&
+                        dev->read_sector(dev, dev->sector_count, ramdisk_read_buf) == BLKDEV_EINVAL &&
+                        dev->write_sectors(dev, dev->sector_count - 1, 2, ramdisk_write_buf) == BLKDEV_EINVAL &&
+                        dev->read_sectors(dev, 0xFFFFFFFFu, 2, ramdisk_read_buf) == BLKDEV_EINVAL;
+        if (bounds_ok) {
+            serial_puts("RAMDISK_BOUNDS_OK\n");
+        }
+
+        if (basic_ok && multi_ok && bounds_ok) {
+            serial_puts("RAMDISK_OK\n");
+        } else {
+            serial_puts("RAMDISK_FAIL\n");
         }
     }
 #endif
@@ -579,6 +649,30 @@ void kernel_main(void) {
         safety_priority_printed = 0;
         safety_fairness_printed = 0;
         safety_ok_printed = 0;
+
+        struct process *yield_guard = process_create_preemptive((uint32_t)scheduler_safety_high_task);
+        if (!yield_guard) {
+            serial_puts("SCHED_SAFETY_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+
+        scheduler_set_current(yield_guard);
+        uint32_t schedule_before_yield = scheduler_get_count();
+        yield();
+        if (scheduler_get_current() == yield_guard &&
+            scheduler_get_count() == schedule_before_yield) {
+            serial_puts("SCHED_YIELD_GUARD_OK\n");
+        } else {
+            serial_puts("SCHED_SAFETY_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+
+        scheduler_init();
+        process_init();
 
         struct process *high = process_create_preemptive((uint32_t)scheduler_safety_high_task);
         struct process *low_a = process_create_preemptive((uint32_t)scheduler_safety_low_a_task);

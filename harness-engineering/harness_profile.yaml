@@ -1,6 +1,6 @@
 profile_version: "2026-06-02"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_stage2_preemptive_memory_core_scaffold"
+project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_scaffold"
 source_of_truth: true
 
 format_policy:
@@ -52,6 +52,7 @@ claim_status:
   process: "claimable_with_user_process_record_ring3_entry_and_address_space_isolation_tests"
   scheduler: "claimable_with_scheduler_preemption_priority_fairness_tests"
   user_mode: "claimable_with_usermode_ring3_test"
+  block_device: "claimable_with_ramdisk_runtime_test"
   filesystem: "not_started"
   networking: "not_started"
 
@@ -80,6 +81,7 @@ deep_gates:
   - "paging_per_process_address_space_test"
   - "syscall_user_mode_negative_path_test"
   - "scheduler_priority_fairness_safety_test"
+  - "ramdisk_block_device_runtime_test"
   - "shell_command_io_stable_test"
 
 pending_deep_gates: []
@@ -140,12 +142,11 @@ routes:
       - "panic_or_fault_evidence_for_negative_paths"
 
 mimo_next_tasks:
-  - id: "core-stress-and-static-hardening"
-    priority: "P2"
-    success: "Repeat the proven syscall, scheduler, paging, E820, frame, and allocator gates under broader stress/static checks before adding new OS breadth."
+  - id: "vfs-and-simple-filesystem-foundation"
+    priority: "P0"
+    success: "Build VFS and a simple filesystem on top of the proven ramdisk block-device gate before adding an ELF loader."
 
 forbidden_next_breadth:
-  - "filesystem"
   - "networking"
   - "more_shell_commands_without_tests"
   - "graphics_mode"

@@ -208,6 +208,10 @@ void yield(void) {
     if (!scheduler_initialized) return;
 
     struct process *prev = current;
+    if (prev && prev->interrupt_frame) {
+        return;
+    }
+
     scheduler_schedule();
 
     if (prev && prev != current && prev->state == PROCESS_READY) {

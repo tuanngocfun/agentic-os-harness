@@ -80,8 +80,8 @@ void process_destroy(struct process *proc) {
 ```
 
 ### Status
-- **TODO**: Implement free list
-- **Test**: Create 20+ processes sequentially to verify reuse
+- **DONE**: Bitmap-backed stack slot reuse is implemented in `kernel/process.c`
+- **Test**: Covered by process/scheduler regression gates; broader process-lifecycle stress remains future work
 
 ---
 
@@ -139,8 +139,8 @@ static int is_user_pointer_valid(uint32_t ptr, uint32_t size) {
 ```
 
 ### Status
-- **TODO**: Implement page-by-page validation
-- **Test**: Create test with 3-page buffer, unmap middle page
+- **DONE**: Syscall pointer validation checks every page in the user buffer range
+- **Test**: Covered by `make test-syscall-negative`
 
 ---
 
@@ -244,8 +244,8 @@ void yield(void) {
 Make all tasks use interrupt frame (more complex).
 
 ### Status
-- **TODO**: Implement Option A (simpler, safer)
-- **Test**: Call yield() from preemptive task
+- **DONE**: `yield()` returns without scheduling when the current task uses an interrupt frame
+- **Test**: Covered by `make test-scheduler-safety` marker `SCHED_YIELD_GUARD_OK`
 
 ---
 
@@ -264,7 +264,7 @@ This is architectural. Options:
 For now: Document it clearly.
 
 ### Status
-- **TODO**: Add clear documentation
+- **DOCUMENTED**: Current page-table allocation still depends on low identity-mapped frames
 - **FUTURE**: Implement recursive mapping when needed
 
 ---
@@ -301,24 +301,22 @@ void shell_reboot(void) {
 ```
 
 ### Status
-- **TODO**: Implement keyboard controller reset
-- **Test**: Type `reboot` in shell
+- **DONE**: Shell reboot uses keyboard-controller reset with a triple-fault fallback
+- **Test**: Manual shell reboot validation remains separate from automated boot gates
 
 ---
 
 ## Test Plan
 
-After all fixes:
+Current regression gates:
 ```bash
-make test-deep  # All existing tests should still pass
-make test-bug-fixes  # New test for bug fixes
+make test
+make test-deep
+make test-scheduler-safety
 ```
 
-## Priority Order
+## Remaining Priority Order
 
-1. **Bug #1** (stack leak) - HIGH - prevents long-running systems
-2. **Bug #2** (pointer validation) - HIGH - security/stability
-3. **Bug #3** (exception handlers) - MEDIUM - improves debuggability
-4. **Bug #4** (yield mixing) - MEDIUM - prevents specific crash
-5. **Bug #6** (reboot) - LOW - usability issue
-6. **Bug #5** (4MB limit) - DOCUMENT - not urgent
+1. **Bug #3** (default exception handlers) - improves debuggability for uncommon CPU exceptions
+2. **Bug #5** (page-table allocator 4MB limit) - architectural cleanup when process/address-space scale grows
+3. **Core stress** - repeat process/syscall/scheduler/paging paths under larger lifecycle tests
