@@ -2,7 +2,7 @@
 
 ## Project Overview
 x86 bare metal teaching operating system written in C and x86 assembly (NASM syntax).
-Runs on QEMU i386 emulator. Has QEMU-validated boot, shell `help`, syscall ABI, ring-3 syscall negative paths, exception panic, paging, cooperative scheduler, timer preemption, scheduler priority/fairness safety proof, E820 memory-map detection, physical frame allocator lifecycle, heap allocator, ring-3 user-mode, per-process address-space switching, and shell `echo ok` gates. These are evidence-scoped proofs, not a complete operating system claim.
+Runs on QEMU i386 emulator. Has QEMU-validated stage-2 boot, shell `help`, syscall ABI, ring-3 syscall negative paths, exception panic, paging, cooperative scheduler, timer preemption, scheduler priority/fairness safety proof, E820 memory-map detection, physical frame allocator lifecycle, heap allocator, ring-3 user-mode, per-process address-space switching, and shell `echo ok` gates. These are evidence-scoped proofs, not a complete operating system claim.
 Before advanced core work, read `harness-engineering/harness_profile.yaml` and `harness-engineering/13-agent-routing-and-risk/README.md`.
 
 ## Tech Stack
@@ -62,13 +62,13 @@ make clean
 ```
 
 ## Architecture Notes
-- Build artifacts: `build/boot.bin`, `build/boot_config.inc`, `build/kernel.elf`, `build/kernel.bin`, `build/os.img`
-- Boot sequence: BIOS -> `boot.bin` at 0x7C00 -> load raw `kernel.bin` at 0x1000 -> protected mode -> kernel entry
-- Phase-1 loader uses BIOS-reported CHS geometry and currently requires `KERNEL_SECTORS <= 120`
+- Build artifacts: `build/boot.bin`, `build/stage2.bin`, `build/boot_config.inc`, `build/kernel.elf`, `build/kernel.bin`, `build/os.img`
+- Boot sequence: BIOS -> `boot.bin` at 0x7C00 -> load `stage2.bin` at 0x90000 -> stage 2 loads raw `kernel.bin` at 0x1000 by LBA -> protected mode -> kernel entry
+- Stage 2 reserves 32 disk sectors and places the kernel at LBA 33, removing the previous phase-1 120-sector CHS kernel cap
 - Kernel entry: `entry.asm` puts `_start` in `.entry`, sets stack, and calls `kernel_main()`
 - Boot-marker tests read COM1 serial output via QEMU `-serial file:build/serial.log -monitor none`
 - Shell-runtime tests use QEMU monitor `sendkey`, dump VGA text memory, and require visible `help` output.
-- Required markers: `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
+- Required markers: `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
 - Optional markers: `TESTS_PASS`
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 - Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and `help` rendering.
@@ -83,7 +83,8 @@ make clean
 | 0x0400-0x04FF | BIOS Data Area |
 | 0x7C00-0x7DFF | Boot sector |
 | 0x1000+ | Kernel binary loaded from generated sector count |
-| 0x90000 | Temporary stack |
+| 0x70000 | Temporary protected-mode stack |
+| 0x90000 | Stage-2 loader body |
 | 0xB8000 | VGA text buffer |
 | 0x100000-0x101FFF | Boot kernel page directory/table |
 | 0x200000-0x2FFFFF | Fixed 1 MiB heap used by `kmalloc`/`kfree` |
@@ -98,7 +99,7 @@ make clean
 - KHÔNG assemble boot sector bằng `nasm -f elf32` để ghi vào disk image
 - KHÔNG link `boot.bin` hoặc bootloader object vào kernel
 - KHÔNG hardcode stale `KERNEL_SECTORS`; generate or validate it from `kernel.bin`
-- KHÔNG let the phase-1 BIOS-geometry CHS loader exceed 120 kernel sectors
+- KHÔNG reintroduce a phase-1-only kernel loader or stale 120-sector CHS kernel cap
 - KHÔNG dùng `-serial mon:stdio` as automated evidence channel
 - KHÔNG chạy QEMU bằng root
 - KHÔNG passthrough host disks/devices vào QEMU boot tests

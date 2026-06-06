@@ -25,6 +25,7 @@ Pass condition:
 
 Required artifacts:
 - `build/boot.bin`
+- `build/stage2.bin`
 - `build/boot_config.inc`
 - `build/kernel.elf`
 - `build/kernel.bin`
@@ -35,6 +36,7 @@ Required artifacts:
 - `build/vga.shell.txt` after shell-runtime test
 
 Required markers:
+- `STAGE2_OK`
 - `BOOT_OK`
 - `KERNEL_INIT_OK`
 
@@ -56,11 +58,12 @@ Pass condition:
 3. `build/serial.log` contains all required markers for the current phase.
 4. `build/serial.log` does not contain failure markers.
 5. `build/boot.bin` is exactly 512 bytes.
-6. `build/boot_config.inc` sector count matches `ceil(size(build/kernel.bin) / 512)`.
-7. For the phase-1 BIOS-geometry CHS loader, generated sector count is `<= 120`.
-8. `build/serial.log` was created/truncated by the current run, not reused from a stale pass.
-9. For live kernel/shell tests, QEMU reaches timeout `124`; early exit `0` fails unless this is an explicit shutdown test.
-10. Shell-runtime test decodes VGA text and finds the visible shell banner plus `Available commands:`.
+6. `build/stage2.bin` fits within the reserved 32-sector stage-2 area.
+7. `build/boot_config.inc` records `STAGE2_LOAD_SECTORS`, `KERNEL_LBA_START`, and the generated kernel sector count.
+8. The kernel starts at LBA 33 and the total image stays within the 2880-sector floppy image.
+9. `build/serial.log` was created/truncated by the current run, not reused from a stale pass.
+10. For live kernel/shell tests, QEMU reaches timeout `124`; early exit `0` fails unless this is an explicit shutdown test.
+11. Shell-runtime test decodes VGA text and finds the visible shell banner plus `Available commands:`.
 
 ## Shell-Runtime Protocol
 
@@ -164,7 +167,7 @@ Use the format split from `considerations/`:
 Minimal shell parser:
 
 ```bash
-required="BOOT_OK KERNEL_INIT_OK"
+required="STAGE2_OK BOOT_OK KERNEL_INIT_OK"
 failures="BOOT_DISK_ERROR KERNEL_PANIC"
 log="build/serial.log"
 clean="build/serial.clean.log"
@@ -213,7 +216,7 @@ If a match appears, fix the stale snippet before continuing.
 - Makefile snippets must use `wc -c` for portable byte counts.
 - Makefile snippets must guard `BUILD_DIR` and `OS_IMG` before `dd` or `clean`.
 - Makefile snippets must validate `boot.bin` is exactly 512 bytes.
-- Phase-1 CHS snippets must reject counts beyond their declared loader profile: `> 17` for single-track loading, `> 120` for the current BIOS-geometry profile, or must implement LBA/2-stage loading.
+- Loader snippets must either keep sector 0 minimal and load `stage2.bin`, or explicitly justify any first-stage-only design.
 - Boot sector snippets must use `nasm -f bin`.
 - Boot sector snippets must initialize `DS`, `ES`, `SS`, and `SP` before memory/string/disk access.
 - Kernel flow must name both `kernel.elf` and `kernel.bin`.

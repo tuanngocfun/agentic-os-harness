@@ -11,8 +11,8 @@ Read this with `harness_profile.yaml`. If they conflict, fix the conflict before
 MiMo deserves to continue, but not with a wide-open "build the OS" mandate.
 
 Proven now:
-- Boot image builds from `boot.bin`, `kernel.elf`, `kernel.bin`, and `os.img`.
-- QEMU boot test proves `BOOT_OK`, `KERNEL_INIT_OK`, and `SHELL_READY`.
+- Boot image builds from `boot.bin`, `stage2.bin`, `kernel.elf`, `kernel.bin`, and `os.img`.
+- QEMU boot test proves `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, and `SHELL_READY`.
 - Shell runtime test proves keyboard input, shell dispatch, and VGA output for `help`.
 - Shell I/O test proves `echo ok` by requiring both the serial `SHELL_ECHO_OK` marker and a distinct VGA output line after the typed command.
 - Timer selftest proves PIT-backed tick counter increments when `make test-timer` passes.
@@ -62,7 +62,7 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | Route | Allowed work | Required evidence | Do not claim |
 |---|---|---|---|
 | `harness_only` | Docs, route matrix, validation scripts, evidence templates | `check_harness_contract.sh`, `git_preflight.sh`, drift checks | Runtime OS behavior unless `make test` or a targeted gate proves it |
-| `bootloader` | `boot/`, `Makefile`, linker/image layout, sector count | `make all`, `make test`, `boot.bin` 512 bytes, BIOS-geometry CHS load, generated `KERNEL_SECTORS <= 120` | Kernel identity proof without a kernel magic/header check |
+| `bootloader` | `boot/`, `Makefile`, linker/image layout, sector count | `make all`, `make test`, `boot.bin` 512 bytes, `stage2.bin` within 32 reserved sectors, kernel starts at LBA 33, `STAGE2_OK` before `BOOT_OK` | Kernel identity proof without a kernel magic/header check |
 | `shell_runtime` | Shell, keyboard, VGA, shell test | `make test`, decoded VGA text has `Available commands:` from `help` | Argument-bearing shell commands such as `echo`, plus timer, memory, scheduler, syscall, or user mode |
 | `shell_command_io` | Dedicated shell input/output proof only | `make test-shell-io` distinguishes typed command input from command output and requires `SHELL_ECHO_OK` | Default `scripts/shell_test.sh` evidence or substring matches such as `grep "echo ok"` |
 | `syscall_abi` | `isr.asm`, `syscall.c`, syscall header, focused runtime test | Runtime test proves register ABI, return value, and failure syscall number | User-mode syscall unless ring-3 transition is also tested |
@@ -88,8 +88,8 @@ Findings from `considerations/` are part of the routing contract:
 1. `core-stress-and-static-hardening`
    Re-run syscall, scheduler, paging, E820, frame, and allocator gates under broader stress/static review before adding new OS breadth.
 
-2. `second-stage-loader-or-storage-design`
-   Plan the next architectural step only after the core-risk gates stay green. A second-stage loader may be a better prerequisite than filesystem breadth.
+2. `storage-or-userland-design`
+   Plan filesystem or userland breadth only after the stage-2 loader and core-risk gates stay green.
 
 ## Forbidden Next Work
 

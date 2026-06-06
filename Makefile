@@ -16,9 +16,12 @@ CFLAGS = -ffreestanding -fno-builtin -fno-stack-protector \
          -fno-pic -fno-pie -Wall -Wextra -Iinclude -MMD -MP $(KERNEL_DEFINES) -c
 LDFLAGS = -T linker.ld -ffreestanding -nostdlib -Wl,--build-id=none
 LIBS = -lgcc
-KERNEL_MAX_CHS_SECTORS = 120
+STAGE2_RESERVED_SECTORS = 32
+KERNEL_LBA_START = 33
+FLOPPY_SECTORS = 2880
 
 BOOT_BIN = $(BUILD_DIR)/boot.bin
+STAGE2_BIN = $(BUILD_DIR)/stage2.bin
 BOOT_CONFIG = $(BUILD_DIR)/boot_config.inc
 KERNEL_ENTRY_OBJ = $(BUILD_DIR)/entry.o
 ISR_OBJ = $(BUILD_DIR)/isr.o
@@ -54,7 +57,8 @@ guard-paths:
 	@test "$(OS_IMG)" = "build/os.img" || { echo "ERROR: OS_IMG must be build/os.img"; exit 1; }
 	@test -n "$(BUILD_DIR)" || { echo "ERROR: BUILD_DIR is empty"; exit 1; }
 	@test -n "$(OS_IMG)" || { echo "ERROR: OS_IMG is empty"; exit 1; }
-	@test "$(KERNEL_MAX_CHS_SECTORS)" = "120" || { echo "ERROR: KERNEL_MAX_CHS_SECTORS must be 120"; exit 1; }
+	@test "$(STAGE2_RESERVED_SECTORS)" = "32" || { echo "ERROR: STAGE2_RESERVED_SECTORS must be 32"; exit 1; }
+	@test "$(KERNEL_LBA_START)" = "33" || { echo "ERROR: KERNEL_LBA_START must be 33"; exit 1; }
 
 $(KERNEL_DEFINES_STAMP): guard-paths FORCE
 	@mkdir -p $(BUILD_DIR)
@@ -70,11 +74,13 @@ $(BOOT_CONFIG): guard-paths $(KERNEL_BIN)
 	@mkdir -p $(BUILD_DIR)
 	@sectors=$$((($$(wc -c < $(KERNEL_BIN)) + 511) / 512)); \
 	if [ "$$sectors" -lt 1 ]; then sectors=1; fi; \
-	if [ "$$sectors" -gt "$(KERNEL_MAX_CHS_SECTORS)" ]; then \
-		echo "ERROR: kernel.bin requires $$sectors sectors; BIOS-geometry CHS loader supports max $(KERNEL_MAX_CHS_SECTORS)"; \
+	if [ $$(( $(KERNEL_LBA_START) + $$sectors )) -gt "$(FLOPPY_SECTORS)" ]; then \
+		echo "ERROR: image requires $$(( $(KERNEL_LBA_START) + $$sectors )) sectors; floppy image supports $(FLOPPY_SECTORS)"; \
 		exit 1; \
 	fi; \
-	printf 'KERNEL_SECTORS equ %s\n' "$$sectors" > $@
+	printf 'STAGE2_LOAD_SECTORS equ %s\n' "$(STAGE2_RESERVED_SECTORS)" > $@; \
+	printf 'KERNEL_LBA_START equ %s\n' "$(KERNEL_LBA_START)" >> $@; \
+	printf 'KERNEL_SECTORS equ %s\n' "$$sectors" >> $@
 
 $(BOOT_BIN): $(BOOT_DIR)/boot.asm $(BOOT_CONFIG)
 	@mkdir -p $(BUILD_DIR)
@@ -82,6 +88,16 @@ $(BOOT_BIN): $(BOOT_DIR)/boot.asm $(BOOT_CONFIG)
 	@size=$$(wc -c < $@); \
 	if [ "$$size" -ne 512 ]; then \
 		echo "ERROR: boot.bin must be exactly 512 bytes, got $$size"; \
+		exit 1; \
+	fi
+
+$(STAGE2_BIN): $(BOOT_DIR)/stage2.asm $(BOOT_CONFIG)
+	@mkdir -p $(BUILD_DIR)
+	$(NASM) -I$(BUILD_DIR)/ -f bin $< -o $@
+	@size=$$(wc -c < $@); \
+	limit=$$(( $(STAGE2_RESERVED_SECTORS) * 512 )); \
+	if [ "$$size" -gt "$$limit" ]; then \
+		echo "ERROR: stage2.bin must fit in $(STAGE2_RESERVED_SECTORS) sectors ($$limit bytes), got $$size"; \
 		exit 1; \
 	fi
 
@@ -175,10 +191,11 @@ $(KERNEL_ELF): $(KERNEL_OBJECTS) linker.ld
 $(KERNEL_BIN): $(KERNEL_ELF)
 	$(OBJCOPY) -O binary $< $@
 
-$(OS_IMG): guard-paths $(BOOT_BIN) $(KERNEL_BIN)
-	dd if=/dev/zero of="$(OS_IMG)" bs=512 count=2880 2>/dev/null
+$(OS_IMG): guard-paths $(BOOT_BIN) $(STAGE2_BIN) $(KERNEL_BIN)
+	dd if=/dev/zero of="$(OS_IMG)" bs=512 count=$(FLOPPY_SECTORS) 2>/dev/null
 	dd if="$(BOOT_BIN)" of="$(OS_IMG)" bs=512 count=1 conv=notrunc 2>/dev/null
-	dd if="$(KERNEL_BIN)" of="$(OS_IMG)" bs=512 seek=1 conv=notrunc 2>/dev/null
+	dd if="$(STAGE2_BIN)" of="$(OS_IMG)" bs=512 seek=1 conv=notrunc 2>/dev/null
+	dd if="$(KERNEL_BIN)" of="$(OS_IMG)" bs=512 seek=$(KERNEL_LBA_START) conv=notrunc 2>/dev/null
 
 run: $(OS_IMG)
 	$(QEMU) -drive file=$<,format=raw -m 512M -no-reboot

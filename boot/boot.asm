@@ -1,19 +1,10 @@
 [bits 16]
 [org 0x7C00]
 
-KERNEL_OFFSET equ 0x1000
 COM1 equ 0x3F8
-E820_SEG equ 0x8000
-E820_MAGIC equ 0x30323845
-E820_MAX_ENTRIES equ 32
-E820_HEADER_SIZE equ 8
-E820_ENTRY_SIZE equ 24
+STAGE2_SEG equ 0x9000
 
 %include "boot_config.inc"
-
-%if KERNEL_SECTORS > 120
-%error "CHS track-rolling loader supports at most 120 kernel sectors"
-%endif
 
 start:
     cli
@@ -27,13 +18,9 @@ start:
     mov [BOOT_DRIVE], dl
 
     call serial_init_16
-    call detect_drive_geometry
-    call detect_e820
-    call enable_a20
-    call load_kernel
-    call switch_to_pm
+    call load_stage2
 
-    jmp $
+    jmp STAGE2_SEG:0x0000
 
 serial_init_16:
     mov dx, COM1 + 1
@@ -82,76 +69,18 @@ serial_puts_16:
 .done:
     ret
 
-enable_a20:
-    in al, 0x92
-    or al, 2
-    out 0x92, al
-    ret
+load_stage2:
+    mov word [DAP_COUNT], STAGE2_LOAD_SECTORS
+    mov word [DAP_OFFSET], 0x0000
+    mov word [DAP_SEGMENT], STAGE2_SEG
+    mov dword [DAP_LBA_LOW], 1
+    mov dword [DAP_LBA_HIGH], 0
 
-detect_drive_geometry:
-    mov ah, 0x08
+    mov si, DAP
+    mov ah, 0x42
     mov dl, [BOOT_DRIVE]
-    int 0x13
-    jc .fallback
-
-    and cl, 0x3F
-    jz .fallback
-    mov [SECTORS_PER_TRACK], cl
-    mov [LAST_HEAD], dh
-    jmp .done
-
-.fallback:
-    mov byte [SECTORS_PER_TRACK], 18
-    mov byte [LAST_HEAD], 1
-
-.done:
-    ret
-
-load_kernel:
-    mov si, KERNEL_OFFSET
-    mov cx, KERNEL_SECTORS
-    mov byte [CUR_CYLINDER], 0
-    mov byte [CUR_HEAD], 0
-    mov byte [CUR_SECTOR], 2
-
-.loop:
-    test cx, cx
-    jz .done
-
-    push cx
-    push si
-
-    mov ah, 0x02
-    mov al, 1
-    mov ch, [CUR_CYLINDER]
-    mov cl, [CUR_SECTOR]
-    mov dh, [CUR_HEAD]
-    mov dl, [BOOT_DRIVE]
-    mov bx, si
     int 0x13
     jc disk_error
-
-    pop si
-    pop cx
-
-    add si, 512
-    inc byte [CUR_SECTOR]
-    mov al, [SECTORS_PER_TRACK]
-    cmp [CUR_SECTOR], al
-    jbe .next
-    mov byte [CUR_SECTOR], 1
-    inc byte [CUR_HEAD]
-    mov al, [LAST_HEAD]
-    cmp [CUR_HEAD], al
-    jbe .next
-    mov byte [CUR_HEAD], 0
-    inc byte [CUR_CYLINDER]
-
-.next:
-    dec cx
-    jmp .loop
-
-.done:
     ret
 
 disk_error:
@@ -159,127 +88,17 @@ disk_error:
     call serial_puts_16
     jmp $
 
-detect_e820:
-    push es
-
-    mov ax, E820_SEG            ; Store E820 map at physical 0x80000
-    mov es, ax
-    mov dword [es:0], E820_MAGIC
-    mov word [es:4], 0
-
-    mov di, E820_HEADER_SIZE
-    xor bp, bp                  ; BP = entry count
-    xor ebx, ebx                ; EBX = 0 on first call
-
-.e820_loop:
-    mov dword [es:di + 20], 1   ; Request ACPI 3.x extended attributes
-    mov eax, 0xE820             ; E820 function
-    mov ecx, E820_ENTRY_SIZE    ; Buffer size (24 bytes per entry)
-    mov edx, 0x534D4150         ; 'SMAP' signature
-    int 0x15
-
-    jc .e820_done               ; CF=1 means error or done
-    cmp eax, 0x534D4150         ; EAX should be 'SMAP' on success
-    jne .e820_done
-
-    inc bp                      ; Increment count
-    add di, E820_ENTRY_SIZE     ; Next entry
-    cmp bp, E820_MAX_ENTRIES    ; Max entries
-    jge .e820_done
-
-    test ebx, ebx               ; EBX = 0 means last entry
-    jne .e820_loop
-
-.e820_done:
-    mov word [es:4], bp         ; Store entry count in header
-    pop es
-    ret
-
-switch_to_pm:
-    cli
-    lgdt [gdt_descriptor]
-    mov eax, cr0
-    or eax, 1
-    mov cr0, eax
-    jmp CODE_SEG:init_pm
-
-[bits 32]
-init_pm:
-    mov ax, DATA_SEG
-    mov ds, ax
-    mov ss, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-
-    mov ebp, 0x90000
-    mov esp, ebp
-
-    mov esi, MSG_BOOT_OK
-    call serial_puts_32
-
-    call KERNEL_OFFSET
-    jmp $
-
-serial_putc_32:
-    push edx
-    push eax
-.wait:
-    mov dx, COM1 + 5
-    in al, dx
-    test al, 0x20
-    jz .wait
-    pop eax
-    mov dx, COM1
-    out dx, al
-    pop edx
-    ret
-
-serial_puts_32:
-    lodsb
-    test al, al
-    jz .done
-    call serial_putc_32
-    jmp serial_puts_32
-.done:
-    ret
-
 BOOT_DRIVE: db 0
-CUR_CYLINDER: db 0
-CUR_HEAD: db 0
-CUR_SECTOR: db 2
-SECTORS_PER_TRACK: db 18
-LAST_HEAD: db 1
-MSG_BOOT_OK: db 'BOOT_OK', 0x0A, 0
 MSG_BOOT_DISK_ERROR: db 'BOOT_DISK_ERROR', 0x0A, 0
 
-gdt_start:
-    dq 0x0000000000000000
+DAP:
+    db 0x10
+    db 0
+DAP_COUNT: dw 0
+DAP_OFFSET: dw 0
+DAP_SEGMENT: dw 0
+DAP_LBA_LOW: dd 0
+DAP_LBA_HIGH: dd 0
 
-gdt_code:
-    dw 0xFFFF
-    dw 0x0000
-    db 0x00
-    db 10011010b
-    db 11001111b
-    db 0x00
-
-gdt_data:
-    dw 0xFFFF
-    dw 0x0000
-    db 0x00
-    db 10010010b
-    db 11001111b
-    db 0x00
-
-gdt_end:
-
-gdt_descriptor:
-    dw gdt_end - gdt_start - 1
-    dd gdt_start
-
-CODE_SEG equ gdt_code - gdt_start
-DATA_SEG equ gdt_data - gdt_start
-
-times 510-($-$$) db 0
+times 510 - ($ - $$) db 0
 dw 0xAA55

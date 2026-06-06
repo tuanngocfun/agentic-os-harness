@@ -19,6 +19,7 @@
 | Let Makefile variables redirect `dd` or `clean` | Overrides can target unsafe paths | Guard `BUILD_DIR` and `OS_IMG` before write/delete commands |
 | Treat `KERNEL_DEFINES` changes as if Make tracks them automatically | A selftest build can leave stale objects in the next normal image | Store build config in a stamp/config file and make C objects depend on it |
 | Force too much logic into sector 0 | Boot sector exceeds 512 bytes | Split into a 2-stage bootloader |
+| Reintroduce a sector-0-only kernel loader | Kernel growth is constrained by sector-0 code size and legacy CHS limits | Keep sector 0 minimal and load `stage2.bin`, then let stage 2 load the kernel |
 | Claim a feature works because files exist or boot markers pass | Scaffolding can be linked but never executed | Add runtime gates and artifacts for each behavior |
 | Run deep subsystem probes in the default boot path | Boot/shell debugging chases the wrong layer | Gate probes behind explicit selftest defines and `make test-deep` |
 | Treat structured panic markers as non-failures | `KERNEL_PANIC:...` can be missed by exact matching | Match failure marker prefixes, not only exact lines |
@@ -88,6 +89,7 @@ Git/change-management sources:
 
 Artifacts:
 - `build/boot.bin`
+- `build/stage2.bin`
 - `build/boot_config.inc`
 - `build/kernel.elf`
 - `build/kernel.bin`
@@ -123,11 +125,12 @@ Commands:
 - `.agent/skills/git-change-management/scripts/git_preflight.sh`
 
 Markers:
-- Required in the current shell phase: `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
+- Required in the current shell phase: `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
 - Optional: `TESTS_PASS`
 - Failure: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 
 Runtime evidence:
+- Bootloader: `scripts/boot_test.sh` proves sector 0 loaded stage 2 through `STAGE2_OK`, then protected-mode loader progress through `BOOT_OK`.
 - Shell: `scripts/shell_test.sh` must prove keyboard input, command dispatch, and VGA output for `help`. `scripts/shell_io_test.sh` separately proves `echo ok` with `SHELL_ECHO_OK` and a distinct VGA output line.
 - Syscall: `scripts/syscall_test.sh` proves the current `int 0x80` ABI contract. `scripts/syscall_negative_test.sh` proves ring-3 valid syscall execution plus controlled `ENOSYS`/`EFAULT` negative paths for invalid syscall numbers, kernel pointers, and unmapped user pointers.
 - Exception panic: `scripts/exception_test.sh` proves divide-by-zero, invalid-opcode, GPF, and page-fault structured panic paths via `KERNEL_PANIC:<vector>:<code>` markers.

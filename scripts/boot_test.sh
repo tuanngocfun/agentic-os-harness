@@ -49,21 +49,30 @@ write_evidence() {
 
   boot_bytes="missing"
   boot_sha="missing"
+  stage2_bytes="missing"
+  stage2_sha="missing"
   kernel_bytes="missing"
   kernel_sha="missing"
   serial_sha="missing"
   sectors="unknown"
+  stage2_sectors="unknown"
+  kernel_lba_start="unknown"
 
   [ -f "$BUILD_DIR/boot.bin" ] && boot_bytes="$(file_bytes "$BUILD_DIR/boot.bin")" && boot_sha="$(file_sha256 "$BUILD_DIR/boot.bin")"
+  [ -f "$BUILD_DIR/stage2.bin" ] && stage2_bytes="$(file_bytes "$BUILD_DIR/stage2.bin")" && stage2_sha="$(file_sha256 "$BUILD_DIR/stage2.bin")"
   [ -f "$BUILD_DIR/kernel.bin" ] && kernel_bytes="$(file_bytes "$BUILD_DIR/kernel.bin")" && kernel_sha="$(file_sha256 "$BUILD_DIR/kernel.bin")"
   [ -f "$SERIAL_LOG" ] && serial_sha="$(file_sha256 "$SERIAL_LOG")"
   [ -f "$BUILD_DIR/boot_config.inc" ] && sectors="$(awk '/KERNEL_SECTORS/ {print $3}' "$BUILD_DIR/boot_config.inc")"
+  [ -f "$BUILD_DIR/boot_config.inc" ] && stage2_sectors="$(awk '/STAGE2_LOAD_SECTORS/ {print $3}' "$BUILD_DIR/boot_config.inc")"
+  [ -f "$BUILD_DIR/boot_config.inc" ] && kernel_lba_start="$(awk '/KERNEL_LBA_START/ {print $3}' "$BUILD_DIR/boot_config.inc")"
 
+  stage2_ok=false
   boot_ok=false
   kernel_ok=false
   shell_ready=false
   boot_disk_error=false
   kernel_panic=false
+  marker_present "STAGE2_OK" && stage2_ok=true
   marker_present "BOOT_OK" && boot_ok=true
   marker_present "KERNEL_INIT_OK" && kernel_ok=true
   marker_present "SHELL_READY" && shell_ready=true
@@ -71,10 +80,11 @@ write_evidence() {
   failure_present "KERNEL_PANIC" && kernel_panic=true
 
   task_json="$(json_escape "$TASK_NAME")"
-  printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","sector_count":{"kernel_sectors":"%s","phase1_chs_limit":120},"markers":{"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"SHELL_READY":%s,"BOOT_DISK_ERROR":%s,"KERNEL_PANIC":%s},"safety":{"os_img":"%s","monitor_none":true,"nic_none":true,"serial_file":true},"verdict":"%s"}\n' \
+  printf '{"run_id":"%s","task":"%s","started_at":"%s","ended_at":"%s","qemu_status":%s,"artifacts":[{"path":"build/boot.bin","bytes":"%s","sha256":"%s"},{"path":"build/stage2.bin","bytes":"%s","sha256":"%s"},{"path":"build/kernel.bin","bytes":"%s","sha256":"%s"}],"serial_log_sha256":"%s","sector_count":{"stage2_load_sectors":"%s","kernel_lba_start":"%s","kernel_sectors":"%s"},"markers":{"STAGE2_OK":%s,"BOOT_OK":%s,"KERNEL_INIT_OK":%s,"SHELL_READY":%s,"BOOT_DISK_ERROR":%s,"KERNEL_PANIC":%s},"safety":{"os_img":"%s","monitor_none":true,"nic_none":true,"serial_file":true},"verdict":"%s"}\n' \
     "$run_id" "$task_json" "$started_at" "$ended_at" "$qemu_status" \
-    "$boot_bytes" "$boot_sha" "$kernel_bytes" "$kernel_sha" "$serial_sha" "$sectors" \
-    "$boot_ok" "$kernel_ok" "$shell_ready" "$boot_disk_error" "$kernel_panic" "$OS_IMG" "$verdict" >> "$EVIDENCE_LOG"
+    "$boot_bytes" "$boot_sha" "$stage2_bytes" "$stage2_sha" "$kernel_bytes" "$kernel_sha" "$serial_sha" \
+    "$stage2_sectors" "$kernel_lba_start" "$sectors" \
+    "$stage2_ok" "$boot_ok" "$kernel_ok" "$shell_ready" "$boot_disk_error" "$kernel_panic" "$OS_IMG" "$verdict" >> "$EVIDENCE_LOG"
 }
 
 [ "$BUILD_DIR" = "build" ] || fail "BUILD_DIR must be build"
@@ -127,7 +137,7 @@ case "$qemu_status" in
 esac
 
 pass=true
-for marker in BOOT_OK KERNEL_INIT_OK SHELL_READY; do
+for marker in STAGE2_OK BOOT_OK KERNEL_INIT_OK SHELL_READY; do
   if marker_present "$marker"; then
     echo "[PASS] $marker"
   else
