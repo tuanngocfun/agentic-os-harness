@@ -30,6 +30,7 @@ IDT_OBJ = $(BUILD_DIR)/idt.o
 KEYBOARD_OBJ = $(BUILD_DIR)/keyboard.o
 TIMER_OBJ = $(BUILD_DIR)/timer.o
 MEMORY_OBJ = $(BUILD_DIR)/memory.o
+ALLOCATOR_OBJ = $(BUILD_DIR)/allocator.o
 SHELL_OBJ = $(BUILD_DIR)/shell.o
 GDT_OBJ = $(BUILD_DIR)/gdt.o
 PAGING_OBJ = $(BUILD_DIR)/paging.o
@@ -38,7 +39,7 @@ SYSCALL_OBJ = $(BUILD_DIR)/syscall.o
 PROCESS_OBJ = $(BUILD_DIR)/process.o
 SCHEDULER_OBJ = $(BUILD_DIR)/scheduler.o
 USERMODE_OBJ = $(BUILD_DIR)/usermode.o
-KERNEL_OBJECTS = $(KERNEL_ENTRY_OBJ) $(ISR_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) $(STRING_OBJ) $(IDT_OBJ) $(KEYBOARD_OBJ) $(TIMER_OBJ) $(MEMORY_OBJ) $(GDT_OBJ) $(PAGING_OBJ) $(TSS_OBJ) $(SYSCALL_OBJ) $(PROCESS_OBJ) $(SCHEDULER_OBJ) $(USERMODE_OBJ) $(SHELL_OBJ)
+KERNEL_OBJECTS = $(KERNEL_ENTRY_OBJ) $(ISR_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) $(STRING_OBJ) $(IDT_OBJ) $(KEYBOARD_OBJ) $(TIMER_OBJ) $(MEMORY_OBJ) $(ALLOCATOR_OBJ) $(GDT_OBJ) $(PAGING_OBJ) $(TSS_OBJ) $(SYSCALL_OBJ) $(PROCESS_OBJ) $(SCHEDULER_OBJ) $(USERMODE_OBJ) $(SHELL_OBJ)
 KERNEL_ELF = $(BUILD_DIR)/kernel.elf
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 KERNEL_DEFINES_STAMP = $(BUILD_DIR)/kernel_defines.stamp
@@ -122,6 +123,10 @@ $(MEMORY_OBJ): $(KERNEL_DIR)/memory.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
+$(ALLOCATOR_OBJ): $(KERNEL_DIR)/allocator.c $(KERNEL_DEFINES_STAMP)
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
 $(GDT_OBJ): $(KERNEL_DIR)/gdt.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
@@ -173,7 +178,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-shell-io
+test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-shell-io
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -221,6 +226,22 @@ test-timer:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_TIMER_SELFTEST
 	@bash scripts/timer_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
+test-timer-preemption:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_TIMER_PREEMPTION_SELFTEST
+	@bash scripts/timer_preemption_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-allocator:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_ALLOCATOR_SELFTEST
+	@bash scripts/allocator_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-address-space:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_ADDRESS_SPACE_SELFTEST
+	@bash scripts/address_space_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-syscall-negative:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_SYSCALL_NEGATIVE_SELFTEST
+	@bash scripts/syscall_negative_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 test-shell-io: $(OS_IMG)
 	@bash scripts/shell_io_test.sh
 
@@ -231,4 +252,4 @@ clean: guard-paths
 
 FORCE:
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-shell-io clean FORCE
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-shell-io clean FORCE

@@ -6,6 +6,7 @@
 #include "keyboard.h"
 #include "timer.h"
 #include "memory.h"
+#include "allocator.h"
 #include "paging.h"
 #include "tss.h"
 #include "syscall.h"
@@ -34,6 +35,53 @@ static void scheduler_selftest_task_b(void) {
     yield();
     serial_puts("SCHED_B_AGAIN\n");
     while (1) { asm volatile("hlt"); }
+}
+#endif
+
+#ifdef ENABLE_TIMER_PREEMPTION_SELFTEST
+static volatile int preempt_a_ran = 0;
+static volatile int preempt_b_ran = 0;
+static volatile int preempt_ok_printed = 0;
+
+static void preempt_maybe_report_ok(void) {
+    if (preempt_a_ran && preempt_b_ran && !preempt_ok_printed) {
+        preempt_ok_printed = 1;
+        serial_puts("PREEMPT_OK\n");
+    }
+}
+
+static void preempt_task_a(void) {
+    while (1) {
+        if (preempt_a_ran < 3) {
+            preempt_a_ran++;
+            serial_puts("PREEMPT_A\n");
+        }
+        preempt_maybe_report_ok();
+        for (volatile int i = 0; i < 200000; i++) {
+        }
+    }
+}
+
+static void preempt_task_b(void) {
+    while (1) {
+        if (preempt_b_ran < 3) {
+            preempt_b_ran++;
+            serial_puts("PREEMPT_B\n");
+        }
+        preempt_maybe_report_ok();
+        for (volatile int i = 0; i < 200000; i++) {
+        }
+    }
+}
+#endif
+
+#ifdef ENABLE_ADDRESS_SPACE_SELFTEST
+#define ADDRSPACE_TEST_VA 0x00800000
+
+static void address_space_dummy_task(void) {
+    while (1) {
+        asm volatile("hlt");
+    }
 }
 #endif
 
@@ -74,6 +122,7 @@ void kernel_main(void) {
     keyboard_init();
     memory_init();
     paging_init();
+    allocator_init();
     tss_init();
     syscall_init();
 
@@ -130,6 +179,61 @@ void kernel_main(void) {
     }
 #endif
 
+#ifdef ENABLE_SYSCALL_NEGATIVE_SELFTEST
+    {
+        serial_puts("SYSCALL_NEGATIVE_TEST\n");
+        uint32_t result;
+
+        // Test 1: Invalid syscall number (too high)
+        asm volatile(
+            "int $0x80"
+            : "=a"(result)
+            : "a"(999), "b"(0), "c"(0), "d"(0)
+        );
+        if (result == SYSCALL_ENOSYS) {
+            serial_puts("SYSCALL_INVALID_NUM_OK\n");
+        } else {
+            serial_puts("SYSCALL_INVALID_NUM_FAIL\n");
+        }
+
+        // Test 2: Invalid syscall number (zero)
+        asm volatile(
+            "int $0x80"
+            : "=a"(result)
+            : "a"(0), "b"(0), "c"(0), "d"(0)
+        );
+        if (result == SYSCALL_ENOSYS) {
+            serial_puts("SYSCALL_ZERO_NUM_OK\n");
+        }
+
+        // Test 3: Bad pointer (kernel space) for SYS_PUTS
+        asm volatile(
+            "int $0x80"
+            : "=a"(result)
+            : "a"(SYS_PUTS), "b"(0x00100000), "c"(0), "d"(0)  // Kernel space
+        );
+        if (result == SYSCALL_EFAULT) {
+            serial_puts("SYSCALL_BAD_POINTER_OK\n");
+        } else {
+            serial_puts("SYSCALL_BAD_POINTER_FAIL\n");
+        }
+
+        // Test 4: Ring check - SYS_USERMODE_TEST from ring 0 should fail
+        asm volatile(
+            "int $0x80"
+            : "=a"(result)
+            : "a"(SYS_USERMODE_TEST), "b"(0xCAFEBABE), "c"(0), "d"(0)
+        );
+        if (result == SYSCALL_EPERM) {
+            serial_puts("SYSCALL_RING_CHECK_OK\n");
+        } else {
+            serial_puts("SYSCALL_RING_CHECK_FAIL\n");
+        }
+
+        serial_puts("SYSCALL_NEGATIVE_OK\n");
+    }
+#endif
+
 #ifdef ENABLE_TIMER_SELFTEST
     {
         serial_puts("TIMER_TEST\n");
@@ -142,6 +246,64 @@ void kernel_main(void) {
             serial_puts("TIMER_TICKS_OK\n");
         } else {
             serial_puts("TIMER_TICKS_FAIL\n");
+        }
+    }
+#endif
+
+#ifdef ENABLE_ALLOCATOR_SELFTEST
+    {
+        serial_puts("ALLOCATOR_TEST\n");
+
+        uint32_t free_before = allocator_get_free_bytes();
+        void *a = kmalloc(24);
+        void *b = kmalloc(80);
+        int alloc_ok = a && b &&
+                       (((uint32_t)a & 0x0F) == 0) &&
+                       (((uint32_t)b & 0x0F) == 0) &&
+                       allocator_get_used_bytes() > 0;
+
+        if (alloc_ok) {
+            serial_puts("ALLOCATOR_ALLOC_OK\n");
+        }
+
+        kfree(a);
+        void *c = kmalloc(16);
+        int reuse_ok = (c == a);
+        if (reuse_ok) {
+            serial_puts("ALLOCATOR_REUSE_OK\n");
+        }
+
+        kfree(b);
+        kfree(c);
+        int free_ok = allocator_get_free_bytes() == free_before;
+        if (free_ok) {
+            serial_puts("ALLOCATOR_FREE_OK\n");
+        }
+
+        void *allocs[300];
+        int count = 0;
+        while (count < 300) {
+            void *ptr = kmalloc(4096);
+            if (!ptr) {
+                break;
+            }
+            allocs[count++] = ptr;
+        }
+
+        int exhaust_ok = count > 100 && kmalloc(4096) == NULL;
+        if (exhaust_ok) {
+            serial_puts("ALLOCATOR_EXHAUST_OK\n");
+        }
+
+        while (count > 0) {
+            kfree(allocs[--count]);
+        }
+
+        if (alloc_ok && reuse_ok && free_ok && exhaust_ok &&
+            allocator_get_free_bytes() == free_before) {
+            serial_puts("ALLOCATOR_OK\n");
+        } else {
+            serial_puts("ALLOCATOR_FAIL\n");
         }
     }
 #endif
@@ -293,6 +455,85 @@ void kernel_main(void) {
     }
 #endif
 
+#ifdef ENABLE_ADDRESS_SPACE_SELFTEST
+    {
+        serial_puts("ADDRSPACE_TEST\n");
+
+        uint32_t kernel_cr3 = paging_get_current_directory();
+        uint32_t cr3_a = paging_create_address_space();
+        uint32_t cr3_b = paging_create_address_space();
+        uint32_t frame_a = paging_alloc_frame();
+        uint32_t frame_b = paging_alloc_frame();
+
+        process_init();
+        scheduler_init();
+        struct process *proc_a = process_create((uint32_t)address_space_dummy_task, 0);
+        struct process *proc_b = process_create((uint32_t)address_space_dummy_task, 0);
+
+        if (proc_a) {
+            process_set_address_space(proc_a, cr3_a);
+        }
+        if (proc_b) {
+            process_set_address_space(proc_b, cr3_b);
+        }
+
+        int cr3_ok = proc_a && proc_b && cr3_a && cr3_b &&
+                     frame_a && frame_b &&
+                     cr3_a != cr3_b &&
+                     frame_a != frame_b;
+        if (cr3_ok) {
+            serial_puts("ADDRSPACE_CR3_OK\n");
+        }
+
+        paging_map_page_in_directory(cr3_a, ADDRSPACE_TEST_VA, frame_a,
+                                     PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+        paging_map_page_in_directory(cr3_b, ADDRSPACE_TEST_VA, frame_b,
+                                     PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+
+        int map_ok = cr3_ok;
+        if (map_ok) {
+            serial_puts("ADDRSPACE_MAP_OK\n");
+        }
+
+        scheduler_set_current(proc_a);
+        volatile uint32_t *slot = (volatile uint32_t *)ADDRSPACE_TEST_VA;
+        *slot = 0xA5A5A5A5;
+        uint32_t read_a = *slot;
+
+        scheduler_add(proc_b);
+        scheduler_schedule();
+        uint32_t cr3_after_b = paging_get_current_directory();
+        *slot = 0x5A5A5A5A;
+        uint32_t read_b = *slot;
+
+        scheduler_schedule();
+        uint32_t cr3_after_a = paging_get_current_directory();
+        uint32_t read_a_again = *slot;
+
+        paging_switch_directory(kernel_cr3);
+        scheduler_init();
+        process_init();
+
+        int switch_ok = cr3_after_b == cr3_b && cr3_after_a == cr3_a;
+        if (switch_ok) {
+            serial_puts("ADDRSPACE_SWITCH_OK\n");
+        }
+
+        int isolation_ok = read_a == 0xA5A5A5A5 &&
+                           read_b == 0x5A5A5A5A &&
+                           read_a_again == 0xA5A5A5A5;
+        if (isolation_ok) {
+            serial_puts("ADDRSPACE_ISOLATION_OK\n");
+        }
+
+        if (cr3_ok && map_ok && switch_ok && isolation_ok) {
+            serial_puts("ADDRSPACE_OK\n");
+        } else {
+            serial_puts("ADDRSPACE_FAIL\n");
+        }
+    }
+#endif
+
 #ifdef ENABLE_USERMODE_SELFTEST
     {
         serial_puts("USERMODE_TEST\n");
@@ -326,23 +567,40 @@ void kernel_main(void) {
     }
 #endif
 
+#ifdef ENABLE_TIMER_PREEMPTION_SELFTEST
+    {
+        serial_puts("PREEMPT_TEST\n");
+
+        asm volatile("cli");
+        process_init();
+        scheduler_init();
+        preempt_a_ran = 0;
+        preempt_b_ran = 0;
+        preempt_ok_printed = 0;
+
+        struct process *task_a = process_create_preemptive((uint32_t)preempt_task_a);
+        struct process *task_b = process_create_preemptive((uint32_t)preempt_task_b);
+
+        if (!task_a || !task_b) {
+            serial_puts("PREEMPT_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+
+        scheduler_add(task_a);
+        scheduler_add(task_b);
+        scheduler_set_preemption_enabled(1);
+        asm volatile("sti");
+
+        while (1) {
+            asm volatile("hlt");
+        }
+    }
+#endif
+
     shell_init();
     serial_puts("SHELL_READY\n");
     vga_puts("Shell ready. Type 'help' for commands.\n");
-
-#if defined(ENABLE_TIMER_TEST) && !defined(ENABLE_SCHEDULER_SELFTEST)
-    // Timer preemption test: wait and report tick count
-    uint32_t start_ticks = timer_get_ticks();
-    // Wait for ~2 seconds worth of ticks (at 18.2 Hz = ~36 ticks)
-    for (volatile int j = 0; j < 100; j++) {
-        for (volatile int i = 0; i < 1000000; i++) { }
-    }
-    uint32_t end_ticks = timer_get_ticks();
-    serial_puts("TIMER_TICK_COUNT ");
-    serial_put_uint32(end_ticks - start_ticks);
-    serial_puts("\n");
-    while(1) { asm volatile("hlt"); }
-#else
     shell_run();
-#endif
 }
