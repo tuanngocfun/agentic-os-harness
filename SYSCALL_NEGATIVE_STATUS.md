@@ -26,31 +26,38 @@ Added comprehensive syscall error handling and validation:
 - User-space range: `0x40000000 - 0xC0000000`
 - Validates pointer is within user-space
 - Checks for overflow on pointer + size
+- Checks start and end pages with paging user-accessibility metadata
 - Applied to `SYS_PUTS` string argument
 
 **String Length Protection:**
 - Limits string length to 4096 bytes
 - Prevents runaway reads
 - Validates null termination
+- Re-checks page accessibility while walking the string so an unmapped user pointer returns `SYSCALL_EFAULT` instead of page-faulting the kernel
 
 **Ring Privilege Check:**
 - Validates caller CS register: `(cs & 0x03) == 0x03`
 - Applied to `SYS_USERMODE_TEST`
 - Returns `SYSCALL_EPERM` for ring 0 calls
+- `SYS_TEST_MARKER` is ring-3-only and is used by the selftest to report results without letting kernel-mode code fake the user path
 
 ### 3. **Test Coverage** (`scripts/syscall_negative_test.sh`)
 
-Tests validate four negative paths:
-1. **Invalid syscall number (999)** → `SYSCALL_ENOSYS`
-2. **Invalid syscall number (0)** → `SYSCALL_ENOSYS`
-3. **Bad pointer (kernel space 0x00100000)** → `SYSCALL_EFAULT`
-4. **Ring check (ring 0 calling SYS_USERMODE_TEST)** → `SYSCALL_EPERM`
+The selftest maps a ring-3 code page and user stack, enters user mode, and validates:
+
+1. **Invalid syscall number (999)** -> `SYSCALL_ENOSYS`
+2. **Invalid syscall number (0)** -> `SYSCALL_ENOSYS`
+3. **Bad pointer (kernel space 0x00100000)** -> `SYSCALL_EFAULT`
+4. **Unmapped user pointer (0x40000000)** -> `SYSCALL_EFAULT`
+5. **Valid stack string from ring 3** -> `SYSCALL_SUCCESS`
 
 Required markers:
 - `SYSCALL_NEGATIVE_TEST`
 - `SYSCALL_INVALID_NUM_OK`
+- `SYSCALL_ZERO_NUM_OK`
 - `SYSCALL_BAD_POINTER_OK`
-- `SYSCALL_RING_CHECK_OK`
+- `SYSCALL_UNMAPPED_POINTER_OK`
+- `SYSCALL_RING3_OK`
 - `SYSCALL_NEGATIVE_OK`
 
 ## Validation
@@ -70,9 +77,8 @@ make test-syscall-negative
 These are acknowledged as still pending:
 
 1. **More comprehensive pointer validation:**
-   - Page-level validation (check page table present bit)
-   - Length validation for all syscall arguments
    - Recursive validation for pointer-to-pointer cases
+   - Write-buffer validation for future syscalls that copy data back to user memory
 
 2. **Resource limit checks:**
    - File descriptor validation
