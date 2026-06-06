@@ -22,8 +22,21 @@ static int is_user_range_valid(uint32_t ptr, uint32_t size) {
 
 static int is_user_pointer_valid(uint32_t ptr, uint32_t size) {
     if (!is_user_range_valid(ptr, size)) return 0;
-    if (!paging_is_user_accessible(ptr)) return 0;
-    if (size > 1 && !paging_is_user_accessible(ptr + size - 1)) return 0;
+
+    // Check EVERY page in the range, not just first and last
+    uint32_t start_page = ptr & ~0xFFF;
+    uint32_t end_addr = ptr + (size > 0 ? size - 1 : 0);
+    uint32_t end_page = end_addr & ~0xFFF;
+
+    for (uint32_t page = start_page; page <= end_page; page += 0x1000) {
+        if (!paging_is_mapped(page)) {
+            return 0;
+        }
+        if (!paging_is_user_accessible(page)) {
+            return 0;
+        }
+    }
+
     return 1;
 }
 

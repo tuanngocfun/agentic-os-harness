@@ -3,26 +3,50 @@
 #include "string.h"
 #include <stdint.h>
 
+#define STACK_SLOTS 16
+#define STACK_SLOT_SIZE (KERNEL_STACK_SIZE / sizeof(uint32_t))
+
 static struct process process_table[MAX_PROCESSES];
 static uint32_t next_pid = 1;
 static uint32_t process_count = 0;
-static uint32_t stack_pool[16 * 1024];
-static uint32_t stack_offset = 0;
+static uint32_t stack_pool[STACK_SLOTS * STACK_SLOT_SIZE];
+static uint16_t stack_free_bitmap = 0xFFFF;  // All 16 slots free initially
 
 static uint32_t *allocate_stack(uint32_t size) {
-    if (stack_offset + (size / sizeof(uint32_t)) > (sizeof(stack_pool) / sizeof(stack_pool[0]))) {
+    if (size != KERNEL_STACK_SIZE) {
         return NULL;
     }
-    uint32_t *stack = &stack_pool[stack_offset];
-    stack_offset += size / sizeof(uint32_t);
-    return stack;
+
+    // Find first free slot
+    for (int i = 0; i < STACK_SLOTS; i++) {
+        if (stack_free_bitmap & (1 << i)) {
+            stack_free_bitmap &= ~(1 << i);  // Mark as used
+            return &stack_pool[i * STACK_SLOT_SIZE];
+        }
+    }
+    return NULL;  // No free slots
+}
+
+static void free_stack(uint32_t *stack) {
+    if (!stack) return;
+
+    // Calculate slot index from stack pointer
+    ptrdiff_t offset = stack - stack_pool;
+    if (offset < 0 || (size_t)offset >= (STACK_SLOTS * STACK_SLOT_SIZE)) {
+        return;  // Invalid stack pointer
+    }
+
+    int slot = offset / STACK_SLOT_SIZE;
+    if (slot >= 0 && slot < STACK_SLOTS) {
+        stack_free_bitmap |= (1 << slot);  // Mark as free
+    }
 }
 
 void process_init(void) {
     memset(process_table, 0, sizeof(process_table));
     next_pid = 1;
     process_count = 0;
-    stack_offset = 0;
+    stack_free_bitmap = 0xFFFF;  // All slots free
 }
 
 struct process *process_create(uint32_t entry_point, int is_user) {
@@ -148,9 +172,22 @@ struct process *process_create_preemptive(uint32_t entry_point) {
 }
 
 void process_destroy(struct process *proc) {
-    if (!proc) return;
+    if (!proc || proc->state == PROCESS_DEAD) {
+        return;
+    }
+
+    // Free the kernel stack
+    free_stack(proc->kernel_stack);
+
+    // Clear process state
     proc->state = PROCESS_DEAD;
     proc->pid = 0;
+    proc->kernel_stack = NULL;
+    proc->esp = 0;
+    proc->ebp = 0;
+    proc->eip = 0;
+    proc->cr3 = 0;
+
     process_count--;
 }
 

@@ -68,8 +68,26 @@ static void shell_execute(const char *cmd) {
         vga_puts("x86 Bare Metal OS v0.1.0\n");
         vga_puts("Built with i686-elf-gcc 13.2.0\n");
     } else if (strcmp(cmd, "reboot") == 0) {
-        vga_puts("Rebooting...\n");
-        asm volatile("int $0x03");
+        vga_puts("Rebooting system...\n");
+
+        // Keyboard controller reset (most reliable)
+        uint8_t tmp;
+        asm volatile("inb $0x64, %0" : "=a"(tmp));
+        while (tmp & 0x02) {
+            asm volatile("inb $0x64, %0" : "=a"(tmp));
+        }
+        asm volatile("outb %0, $0x64" : : "a"((uint8_t)0xFE));
+
+        // Triple fault fallback
+        struct { uint16_t limit; uint32_t base; } null_idt = { 0, 0 };
+        asm volatile(
+            "cli\n"
+            "lidt %0\n"
+            "int $0x03\n"
+            : : "m"(null_idt)
+        );
+
+        while (1) { asm volatile("hlt"); }
     } else {
         vga_puts("Unknown command: ");
         vga_puts(cmd);
