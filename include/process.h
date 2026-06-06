@@ -7,6 +7,8 @@
 #define KERNEL_STACK_SIZE 4096
 #define USER_STACK_SIZE 4096
 #define USER_STACK_TOP 0xB0000000
+#define PROCESS_DEFAULT_PRIORITY 1
+#define PROCESS_MAX_PRIORITY 16
 
 enum process_state {
     PROCESS_DEAD = 0,
@@ -21,6 +23,10 @@ struct process {
     uint32_t ebp;
     uint32_t eip;
     uint32_t cr3;
+    uint32_t interrupt_frame;
+    uint32_t priority;
+    uint32_t dynamic_priority;
+    uint32_t run_count;
     enum process_state state;
     uint32_t *kernel_stack;
     uint32_t *user_stack;
@@ -29,8 +35,10 @@ struct process {
 
 void process_init(void);
 struct process *process_create(uint32_t entry_point, int is_user);
+struct process *process_create_preemptive(uint32_t entry_point);
 void process_destroy(struct process *proc);
 struct process *process_get_current(void);
 uint32_t process_get_count(void);
+void process_set_address_space(struct process *proc, uint32_t cr3);
 
 #endif

@@ -17,6 +17,11 @@ void timer_handler(void) {
     scheduler_tick();
 }
 
+uint32_t timer_interrupt(uint32_t interrupted_esp) {
+    timer_ticks++;
+    return scheduler_preempt(interrupted_esp);
+}
+
 void timer_init(uint32_t freq) {
     uint32_t divisor = PIT_FREQ / freq;
 

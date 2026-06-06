@@ -1,4 +1,5 @@
 #include "process.h"
+#include "paging.h"
 #include "string.h"
 #include <stdint.h>
 
@@ -43,10 +44,16 @@ struct process *process_create(uint32_t entry_point, int is_user) {
 
     proc->pid = next_pid++;
     proc->state = PROCESS_READY;
-    proc->cr3 = 0;
+    proc->cr3 = paging_get_current_directory();
+    proc->interrupt_frame = 0;
+    proc->priority = PROCESS_DEFAULT_PRIORITY;
+    proc->dynamic_priority = PROCESS_DEFAULT_PRIORITY;
+    proc->run_count = 0;
 
     proc->kernel_stack = allocate_stack(KERNEL_STACK_SIZE);
     if (!proc->kernel_stack) {
+        proc->state = PROCESS_DEAD;
+        proc->pid = 0;
         return NULL;
     }
 
@@ -82,6 +89,64 @@ struct process *process_create(uint32_t entry_point, int is_user) {
     return proc;
 }
 
+struct process *process_create_preemptive(uint32_t entry_point) {
+    if (process_count >= MAX_PROCESSES) {
+        return NULL;
+    }
+
+    struct process *proc = NULL;
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (process_table[i].state == PROCESS_DEAD) {
+            proc = &process_table[i];
+            break;
+        }
+    }
+
+    if (!proc) {
+        return NULL;
+    }
+
+    proc->pid = next_pid++;
+    proc->state = PROCESS_READY;
+    proc->cr3 = paging_get_current_directory();
+    proc->interrupt_frame = 1;
+    proc->priority = PROCESS_DEFAULT_PRIORITY;
+    proc->dynamic_priority = PROCESS_DEFAULT_PRIORITY;
+    proc->run_count = 0;
+
+    proc->kernel_stack = allocate_stack(KERNEL_STACK_SIZE);
+    if (!proc->kernel_stack) {
+        proc->state = PROCESS_DEAD;
+        proc->pid = 0;
+        return NULL;
+    }
+
+    uint32_t *stack_top = proc->kernel_stack + (KERNEL_STACK_SIZE / sizeof(uint32_t));
+
+    *(--stack_top) = 0x202;
+    *(--stack_top) = 0x08;
+    *(--stack_top) = entry_point;
+    *(--stack_top) = 0x10;
+    *(--stack_top) = 0x10;
+    *(--stack_top) = 0x10;
+    *(--stack_top) = 0x10;
+    *(--stack_top) = 0;
+    *(--stack_top) = 0;
+    *(--stack_top) = 0;
+    *(--stack_top) = 0;
+    *(--stack_top) = 0;
+    *(--stack_top) = 0;
+    *(--stack_top) = 0;
+    *(--stack_top) = 0;
+
+    proc->esp = (uint32_t)stack_top;
+    proc->ebp = 0;
+    proc->eip = entry_point;
+
+    process_count++;
+    return proc;
+}
+
 void process_destroy(struct process *proc) {
     if (!proc) return;
     proc->state = PROCESS_DEAD;
@@ -100,4 +165,11 @@ struct process *process_get_current(void) {
 
 uint32_t process_get_count(void) {
     return process_count;
+}
+
+void process_set_address_space(struct process *proc, uint32_t cr3) {
+    if (!proc) {
+        return;
+    }
+    proc->cr3 = cr3;
 }
