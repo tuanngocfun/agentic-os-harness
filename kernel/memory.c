@@ -1,4 +1,5 @@
 #include "memory.h"
+#include "e820.h"
 #include <stdint.h>
 
 static uint32_t total_memory_kb = 0;
@@ -20,6 +21,13 @@ static uint8_t cmos_read(uint8_t reg) {
 }
 
 void memory_init(void) {
+    uint64_t e820_total = e820_get_total_usable_memory();
+    if (e820_is_available() && e820_total >= (16 * 1024 * 1024)) {
+        total_memory_kb = (uint32_t)(e820_total >> 10);
+        detected_from_hardware = 1;
+        return;
+    }
+
     uint32_t below_16mb_kb = (uint32_t)cmos_read(0x30) |
                              ((uint32_t)cmos_read(0x31) << 8);
     uint32_t above_16mb_blocks = (uint32_t)cmos_read(0x34) |

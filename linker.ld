@@ -24,9 +24,13 @@ SECTIONS
 
     .bss BLOCK(4K) :
     {
+        __bss_start = .;
         *(COMMON)
         *(.bss .bss.*)
+        __bss_end = .;
     }
+
+    __kernel_end = .;
 
     /DISCARD/ :
     {

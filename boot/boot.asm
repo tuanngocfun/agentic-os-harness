@@ -3,6 +3,11 @@
 
 KERNEL_OFFSET equ 0x1000
 COM1 equ 0x3F8
+E820_SEG equ 0x8000
+E820_MAGIC equ 0x30323845
+E820_MAX_ENTRIES equ 32
+E820_HEADER_SIZE equ 8
+E820_ENTRY_SIZE equ 24
 
 %include "boot_config.inc"
 
@@ -23,6 +28,7 @@ start:
 
     call serial_init_16
     call detect_drive_geometry
+    call detect_e820
     call enable_a20
     call load_kernel
     call switch_to_pm
@@ -83,11 +89,6 @@ enable_a20:
     ret
 
 detect_drive_geometry:
-    push ax
-    push bx
-    push cx
-    push dx
-
     mov ah, 0x08
     mov dl, [BOOT_DRIVE]
     int 0x13
@@ -104,10 +105,6 @@ detect_drive_geometry:
     mov byte [LAST_HEAD], 1
 
 .done:
-    pop dx
-    pop cx
-    pop bx
-    pop ax
     ret
 
 load_kernel:
@@ -161,6 +158,42 @@ disk_error:
     mov si, MSG_BOOT_DISK_ERROR
     call serial_puts_16
     jmp $
+
+detect_e820:
+    push es
+
+    mov ax, E820_SEG            ; Store E820 map at physical 0x80000
+    mov es, ax
+    mov dword [es:0], E820_MAGIC
+    mov word [es:4], 0
+
+    mov di, E820_HEADER_SIZE
+    xor bp, bp                  ; BP = entry count
+    xor ebx, ebx                ; EBX = 0 on first call
+
+.e820_loop:
+    mov dword [es:di + 20], 1   ; Request ACPI 3.x extended attributes
+    mov eax, 0xE820             ; E820 function
+    mov ecx, E820_ENTRY_SIZE    ; Buffer size (24 bytes per entry)
+    mov edx, 0x534D4150         ; 'SMAP' signature
+    int 0x15
+
+    jc .e820_done               ; CF=1 means error or done
+    cmp eax, 0x534D4150         ; EAX should be 'SMAP' on success
+    jne .e820_done
+
+    inc bp                      ; Increment count
+    add di, E820_ENTRY_SIZE     ; Next entry
+    cmp bp, E820_MAX_ENTRIES    ; Max entries
+    jge .e820_done
+
+    test ebx, ebx               ; EBX = 0 means last entry
+    jne .e820_loop
+
+.e820_done:
+    mov word [es:4], bp         ; Store entry count in header
+    pop es
+    ret
 
 switch_to_pm:
     cli
