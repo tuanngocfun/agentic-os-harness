@@ -57,6 +57,7 @@ require_file "../scripts/allocator_test.sh"
 require_file "../scripts/address_space_test.sh"
 require_file "../scripts/syscall_negative_test.sh"
 require_file "../scripts/syscall_file_test.sh"
+require_file "../scripts/elf_loader_test.sh"
 require_file "../scripts/e820_test.sh"
 require_file "../scripts/ramdisk_test.sh"
 require_file "../scripts/vfs_test.sh"
@@ -85,7 +86,7 @@ require_grep 'loader:[[:space:]]*"stage2_lba_loader"' "harness_profile.yaml"
 require_grep 'STAGE2_LOAD_SECTORS' "$REPO_ROOT/boot/boot.asm"
 require_grep 'KERNEL_LBA_START' "$REPO_ROOT/boot/stage2.asm"
 require_grep 'STAGE2_OK' "$REPO_ROOT/boot/stage2.asm"
-require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_scaffold"' "harness_profile.yaml"
+require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_prep"' "harness_profile.yaml"
 require_grep 'format_policy:' "harness_profile.yaml"
 require_grep 'runtime_evidence:[[:space:]]*"jsonl"' "harness_profile.yaml"
 require_grep 'claim_status:' "harness_profile.yaml"
@@ -180,6 +181,12 @@ if grep -q 'ENABLE_VFS_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-v
   require_grep 'test-deep:.*test-vfs' "$REPO_ROOT/Makefile"
 else
   require_grep 'filesystem:[[:space:]]*"not_started"' "harness_profile.yaml"
+fi
+if grep -q 'ENABLE_ELF_LOADER_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-elf-loader' "$REPO_ROOT/Makefile" && grep -q 'ELF_PREP_OK' "$REPO_ROOT/scripts/elf_loader_test.sh"; then
+  require_grep 'elf_loader:[[:space:]]*"claimable_with_vfs_elf_loader_prep_test"' "harness_profile.yaml"
+  require_grep 'test-deep:.*test-syscall-file.*test-elf-loader' "$REPO_ROOT/Makefile"
+else
+  require_grep 'elf_loader:[[:space:]]*"not_started"' "harness_profile.yaml"
 fi
 if grep -q 'ENABLE_USERMODE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-usermode' "$REPO_ROOT/Makefile" && grep -q 'USERMODE_RING3_OK' "$REPO_ROOT/scripts/usermode_test.sh" && rg -q 'enter_user_mode|switch_to_usermode' "$REPO_ROOT/kernel" "$REPO_ROOT/include" 2>/dev/null; then
   require_grep 'user_mode:[[:space:]]*"claimable_with_usermode_ring3_test"' "harness_profile.yaml"

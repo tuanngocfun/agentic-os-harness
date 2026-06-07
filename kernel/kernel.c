@@ -11,6 +11,7 @@
 #include "allocator.h"
 #include "ramdisk.h"
 #include "vfs.h"
+#include "elf.h"
 #include "paging.h"
 #include "tss.h"
 #include "syscall.h"
@@ -155,6 +156,110 @@ static uint8_t vfs_write_buf[SECTOR_SIZE * 2 + 37];
 static uint8_t vfs_read_buf[SECTOR_SIZE * 2 + 37];
 #endif
 
+#ifdef ENABLE_ELF_LOADER_SELFTEST
+#define ELF_TEST_VADDR 0x40000000u
+#define ELF_TEST_ENTRY (ELF_TEST_VADDR + 0x20u)
+#define ELF_TEST_FILE_SIZE 256u
+#define ELF_TEST_SEGMENT_OFFSET 128u
+#define ELF_TEST_SEGMENT_FILE_SIZE 9u
+#define ELF_TEST_SEGMENT_MEM_SIZE 64u
+
+static uint8_t elf_test_image[ELF_TEST_FILE_SIZE];
+static uint8_t elf_bad_image[ELF_TEST_FILE_SIZE];
+static uint8_t elf_trunc_image[32];
+static uint8_t elf_kernel_addr_image[ELF_TEST_FILE_SIZE];
+
+static void elf_put16(uint8_t *buf, uint32_t offset, uint16_t value) {
+    buf[offset] = (uint8_t)(value & 0xFF);
+    buf[offset + 1] = (uint8_t)((value >> 8) & 0xFF);
+}
+
+static void elf_put32(uint8_t *buf, uint32_t offset, uint32_t value) {
+    buf[offset] = (uint8_t)(value & 0xFF);
+    buf[offset + 1] = (uint8_t)((value >> 8) & 0xFF);
+    buf[offset + 2] = (uint8_t)((value >> 16) & 0xFF);
+    buf[offset + 3] = (uint8_t)((value >> 24) & 0xFF);
+}
+
+static void elf_make_image(uint8_t *buf, uint32_t vaddr) {
+    memset(buf, 0, ELF_TEST_FILE_SIZE);
+
+    buf[0] = 0x7F;
+    buf[1] = 'E';
+    buf[2] = 'L';
+    buf[3] = 'F';
+    buf[4] = 1;
+    buf[5] = 1;
+    buf[6] = 1;
+
+    elf_put16(buf, 16, 2);
+    elf_put16(buf, 18, 3);
+    elf_put32(buf, 20, 1);
+    elf_put32(buf, 24, vaddr + 0x20);
+    elf_put32(buf, 28, 52);
+    elf_put32(buf, 32, 0);
+    elf_put32(buf, 36, 0);
+    elf_put16(buf, 40, 52);
+    elf_put16(buf, 42, 32);
+    elf_put16(buf, 44, 1);
+    elf_put16(buf, 46, 0);
+    elf_put16(buf, 48, 0);
+    elf_put16(buf, 50, 0);
+
+    elf_put32(buf, 52, 1);
+    elf_put32(buf, 56, ELF_TEST_SEGMENT_OFFSET);
+    elf_put32(buf, 60, vaddr);
+    elf_put32(buf, 64, vaddr);
+    elf_put32(buf, 68, ELF_TEST_SEGMENT_FILE_SIZE);
+    elf_put32(buf, 72, ELF_TEST_SEGMENT_MEM_SIZE);
+    elf_put32(buf, 76, 5);
+    elf_put32(buf, 80, 1);
+
+    buf[ELF_TEST_SEGMENT_OFFSET + 0] = 'E';
+    buf[ELF_TEST_SEGMENT_OFFSET + 1] = 'L';
+    buf[ELF_TEST_SEGMENT_OFFSET + 2] = 'F';
+    buf[ELF_TEST_SEGMENT_OFFSET + 3] = 'P';
+    buf[ELF_TEST_SEGMENT_OFFSET + 4] = 'R';
+    buf[ELF_TEST_SEGMENT_OFFSET + 5] = 'E';
+    buf[ELF_TEST_SEGMENT_OFFSET + 6] = 'P';
+    buf[ELF_TEST_SEGMENT_OFFSET + 7] = 'O';
+    buf[ELF_TEST_SEGMENT_OFFSET + 8] = 'K';
+}
+
+static int elf_write_fixture(const char *path, const uint8_t *buf, uint32_t size) {
+    int fd = vfs_open(path, VFS_O_CREAT | VFS_O_RDWR | VFS_O_TRUNC);
+    int status;
+
+    if (fd < 0) {
+        return 0;
+    }
+
+    status = vfs_write(fd, buf, size);
+    if (vfs_close(fd) != VFS_SUCCESS) {
+        return 0;
+    }
+
+    return status == (int)size;
+}
+
+static int elf_loaded_segment_ok(void) {
+    const uint8_t *loaded = (const uint8_t *)ELF_TEST_VADDR;
+    const uint8_t *expected = elf_test_image + ELF_TEST_SEGMENT_OFFSET;
+
+    if (memcmp(loaded, expected, ELF_TEST_SEGMENT_FILE_SIZE) != 0) {
+        return 0;
+    }
+
+    for (uint32_t i = ELF_TEST_SEGMENT_FILE_SIZE; i < ELF_TEST_SEGMENT_MEM_SIZE; i++) {
+        if (loaded[i] != 0) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+#endif
+
 #ifdef ENABLE_ADDRESS_SPACE_SELFTEST
 #define ADDRSPACE_TEST_VA 0x00800000
 
@@ -175,11 +280,12 @@ extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
 #define USERMODE_SUPERVISOR_PROBE_PHYSICAL 0x00910000
 
 static __attribute__((noreturn)) void usermode_selftest_entry(void) {
-    uint32_t result;
+    uint32_t result = SYS_USERMODE_TEST;
     asm volatile(
         "int $0x80"
-        : "=a"(result)
-        : "a"(SYS_USERMODE_TEST), "b"(0xCAFEBABE), "c"(0), "d"(0)
+        : "+a"(result)
+        : "b"(0xCAFEBABE), "c"(0), "d"(0)
+        : "memory", "cc"
     );
     (void)result;
 
@@ -193,11 +299,12 @@ static __attribute__((noreturn)) void usermode_selftest_entry(void) {
 
 #if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST)
 static void syscall_marker(uint32_t marker) {
-    uint32_t ignored;
+    uint32_t ignored = SYS_TEST_MARKER;
     asm volatile(
         "int $0x80"
-        : "=a"(ignored)
-        : "a"(SYS_TEST_MARKER), "b"(marker), "c"(0), "d"(0)
+        : "+a"(ignored)
+        : "b"(marker), "c"(0), "d"(0)
+        : "memory", "cc"
     );
     (void)ignored;
 }
@@ -210,47 +317,57 @@ static void syscall_marker(uint32_t marker) {
 static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
     uint32_t result;
 
+    result = 999;
     asm volatile(
         "int $0x80"
-        : "=a"(result)
-        : "a"(999), "b"(0), "c"(0), "d"(0)
+        : "+a"(result)
+        : "b"(0), "c"(0), "d"(0)
+        : "memory", "cc"
     );
     if (result == SYSCALL_ENOSYS) {
         syscall_marker(SYSCALL_MARK_INVALID_NUM);
     }
 
+    result = 0;
     asm volatile(
         "int $0x80"
-        : "=a"(result)
-        : "a"(0), "b"(0), "c"(0), "d"(0)
+        : "+a"(result)
+        : "b"(0), "c"(0), "d"(0)
+        : "memory", "cc"
     );
     if (result == SYSCALL_ENOSYS) {
         syscall_marker(SYSCALL_MARK_ZERO_NUM);
     }
 
+    result = SYS_PUTS;
     asm volatile(
         "int $0x80"
-        : "=a"(result)
-        : "a"(SYS_PUTS), "b"(0x00100000), "c"(0), "d"(0)
+        : "+a"(result)
+        : "b"(0x00100000), "c"(0), "d"(0)
+        : "memory", "cc"
     );
     if (result == SYSCALL_EFAULT) {
         syscall_marker(SYSCALL_MARK_BAD_POINTER);
     }
 
+    result = SYS_PUTS;
     asm volatile(
         "int $0x80"
-        : "=a"(result)
-        : "a"(SYS_PUTS), "b"(SYSCALL_NEG_UNMAPPED_USER_PTR), "c"(0), "d"(0)
+        : "+a"(result)
+        : "b"(SYSCALL_NEG_UNMAPPED_USER_PTR), "c"(0), "d"(0)
+        : "memory", "cc"
     );
     if (result == SYSCALL_EFAULT) {
         syscall_marker(SYSCALL_MARK_UNMAPPED_POINTER);
     }
 
     char ok[] = "syscall-ok";
+    result = SYS_PUTS;
     asm volatile(
         "int $0x80"
-        : "=a"(result)
-        : "a"(SYS_PUTS), "b"(ok), "c"(0), "d"(0)
+        : "+a"(result)
+        : "b"(ok), "c"(0), "d"(0)
+        : "memory", "cc"
     );
     if (result == SYSCALL_SUCCESS) {
         syscall_marker(SYSCALL_MARK_RING3_OK);
@@ -267,13 +384,13 @@ static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
 #define SYSCALL_FILE_STACK_PHYSICAL 0x00940000
 
 static uint32_t syscall3(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
-    uint32_t result;
     asm volatile(
         "int $0x80"
-        : "=a"(result)
-        : "a"(num), "b"(arg1), "c"(arg2), "d"(arg3)
+        : "+a"(num)
+        : "b"(arg1), "c"(arg2), "d"(arg3)
+        : "memory", "cc"
     );
-    return result;
+    return num;
 }
 
 static void syscall_file_set_path(char *path) {
@@ -450,6 +567,10 @@ void kernel_main(void) {
     e820_init();
     memory_init();
     frame_init();
+    frame_reserve_range(0x00900000, 0x00901000);
+    frame_reserve_range(0x00910000, 0x00911000);
+    frame_reserve_range(0x00930000, 0x00931000);
+    frame_reserve_range(0x00940000, 0x00941000);
     paging_init();
     allocator_init();
     if (ramdisk_init() != BLKDEV_SUCCESS) {
@@ -775,13 +896,78 @@ void kernel_main(void) {
     }
 #endif
 
+#ifdef ENABLE_ELF_LOADER_SELFTEST
+    {
+        struct elf_load_info info;
+
+        serial_puts("ELF_TEST\n");
+
+        elf_make_image(elf_test_image, ELF_TEST_VADDR);
+        elf_make_image(elf_bad_image, ELF_TEST_VADDR);
+        elf_bad_image[1] = 'X';
+        memset(elf_trunc_image, 0, sizeof(elf_trunc_image));
+        elf_trunc_image[0] = 0x7F;
+        elf_trunc_image[1] = 'E';
+        elf_trunc_image[2] = 'L';
+        elf_trunc_image[3] = 'F';
+        elf_make_image(elf_kernel_addr_image, 0x00100000u);
+
+        int vfs_ok = vfs_format() == VFS_SUCCESS &&
+                     vfs_mount() == VFS_SUCCESS &&
+                     elf_write_fixture("/init.elf", elf_test_image, sizeof(elf_test_image)) &&
+                     elf_write_fixture("/bad.elf", elf_bad_image, sizeof(elf_bad_image)) &&
+                     elf_write_fixture("/trunc.elf", elf_trunc_image, sizeof(elf_trunc_image)) &&
+                     elf_write_fixture("/kerneladdr.elf", elf_kernel_addr_image, sizeof(elf_kernel_addr_image));
+        if (vfs_ok) {
+            serial_puts("ELF_VFS_WRITE_OK\n");
+        }
+
+        int load_status = vfs_ok ? elf_load_from_vfs("/init.elf", &info) : ELF_EIO;
+        int load_ok = load_status == ELF_SUCCESS;
+        if (load_ok) {
+            serial_puts("ELF_LOAD_OK\n");
+        }
+
+        int metadata_ok = load_ok &&
+                          info.entry == ELF_TEST_ENTRY &&
+                          info.load_start == ELF_TEST_VADDR &&
+                          info.load_end == (ELF_TEST_VADDR + ELF_TEST_SEGMENT_MEM_SIZE) &&
+                          info.loaded_bytes == ELF_TEST_SEGMENT_FILE_SIZE &&
+                          info.segment_count == 1;
+        if (metadata_ok) {
+            serial_puts("ELF_METADATA_OK\n");
+        }
+
+        int segment_ok = metadata_ok && elf_loaded_segment_ok();
+        if (segment_ok) {
+            serial_puts("ELF_SEGMENT_OK\n");
+            serial_puts("ELF_BSS_OK\n");
+        }
+
+        int negative_ok = elf_load_from_vfs("/bad.elf", &info) == ELF_EINVAL &&
+                          elf_load_from_vfs("/trunc.elf", &info) == ELF_EINVAL &&
+                          elf_load_from_vfs("/kerneladdr.elf", &info) == ELF_EINVAL &&
+                          elf_load_from_vfs("/missing.elf", &info) == ELF_ENOENT;
+        if (negative_ok) {
+            serial_puts("ELF_NEGATIVE_OK\n");
+        }
+
+        if (vfs_ok && load_ok && metadata_ok && segment_ok && negative_ok) {
+            serial_puts("ELF_PREP_OK\n");
+        } else {
+            serial_puts("ELF_FAIL\n");
+        }
+    }
+#endif
+
 #ifdef ENABLE_SYSCALL_ABI_SELFTEST
     {
-        uint32_t result;
+        uint32_t result = SYS_TEST_ABI;
         asm volatile(
             "int $0x80"
-            : "=a"(result)
-            : "a"(6), "b"(0x11111111), "c"(0x22222222), "d"(0x33333333)
+            : "+a"(result)
+            : "b"(0x11111111), "c"(0x22222222), "d"(0x33333333)
+            : "memory", "cc"
         );
         (void)result;
     }
@@ -841,7 +1027,7 @@ void kernel_main(void) {
 
         vfs_format();
         vfs_mount();
-        map_user_code_span((uint32_t)syscall3, (uint32_t)syscall_file_user_entry);
+        map_user_code_span((uint32_t)syscall_marker, (uint32_t)syscall_file_user_entry);
         paging_map_page(user_stack_page,
                         SYSCALL_FILE_STACK_PHYSICAL,
                         PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);

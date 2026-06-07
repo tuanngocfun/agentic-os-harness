@@ -23,12 +23,13 @@ Proven now:
 - Syscall negative-path selftest proves ring-3 valid syscall execution and controlled errors for invalid syscall numbers, kernel-space pointers, and unmapped user pointers.
 - Memory selftest proves E820-backed usable-memory detection for the configured 512 MiB QEMU run. E820/frame selftest proves E820 map handoff and physical frame allocation/free/reuse/exhaustion. Allocator selftest proves fixed-heap `kmalloc`/`kfree` allocation, reuse, free/coalescing accounting, and exhaustion.
 - User-mode selftest proves a ring-3 transition and controlled user/supervisor page fault. It does not prove full userland.
+- VFS and SimpleFS selftests prove a volatile root-only flat filesystem on ramdisk. File syscall selftest proves VFS-backed ring-3 open/read/write/close/stat. ELF loader prep selftest proves VFS-backed ELF32/i386 header validation, PT_LOAD materialization into user-mapped pages, BSS zero-fill, and negative paths.
 
 Not proven:
 - Production-grade virtual memory or dynamic heap growth from arbitrary frame runs.
 - Full userland syscall ABI coverage beyond the proven syscall set and negative paths.
 - SMP-safe scheduling or production-grade synchronization.
-- Filesystem, networking, graphics, and production-grade userland.
+- ELF ring-3 process launch/execution, persistent storage, networking, graphics, and production-grade userland.
 
 ## Loop Traps Diagnosed
 
@@ -73,6 +74,7 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | `memory_detection` | BIOS E820 detection, memory summaries, targeted memory/frame tests | `make test-memory` proves the configured QEMU usable-memory marker; `make test-e820-frame` proves E820 handoff and frame lifecycle; `make test-allocator` proves fixed-heap behavior | Production-grade heap growth or full VM memory-zone policy |
 | `user_mode` | GDT/TSS selectors, user-mode entry, syscall/exception boundary | `make test-usermode` proves ring-3 transition and supervisor-page fault from user mode; address-space isolation is separately proven by `make test-address-space` | Userland ABI completeness or syscall negative-path coverage |
 | `syscall_negative` | syscall validation, page-aware user pointer checks, ring-3 syscall harness | `make test-syscall-negative` proves invalid numbers, kernel pointers, unmapped user pointers, and valid ring-3 syscall marker path | Complete POSIX-style syscall ABI or resource-limit policy |
+| `elf_loader_prep` | ELF parser/loader, VFS-backed file reads, user-page materialization | `make test-elf-loader` proves valid ELF32/i386 PT_LOAD copy, BSS zero-fill, metadata, and invalid/truncated/missing rejection | Actual ring-3 process launch, argv/envp, dynamic linking, or persistent storage |
 
 ## Format Policy
 
@@ -85,11 +87,11 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Next MiMo Tasks
 
-1. `core-stress-and-static-hardening`
-   Re-run syscall, scheduler, paging, E820, frame, and allocator gates under broader stress/static review before adding new OS breadth.
+1. `elf-user-process-launch`
+   Use the proven VFS/file-syscall/ELF-loader-prep path to launch a tiny ELF as a ring-3 process with a dedicated runtime gate.
 
-2. `storage-or-userland-design`
-   Plan filesystem or userland breadth only after the stage-2 loader, ramdisk block-device gate, and core-risk gates stay green.
+2. `core-stress-and-static-hardening`
+   Re-run syscall, scheduler, paging, E820, frame, allocator, VFS, and ELF-loader gates under broader stress/static review before adding unrelated OS breadth.
 
 ## Forbidden Next Work
 

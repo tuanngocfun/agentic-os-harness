@@ -1,6 +1,6 @@
 profile_version: "2026-06-02"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_scaffold"
+project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_prep"
 source_of_truth: true
 
 format_policy:
@@ -54,6 +54,7 @@ claim_status:
   user_mode: "claimable_with_usermode_ring3_test"
   block_device: "claimable_with_ramdisk_runtime_test"
   filesystem: "claimable_with_vfs_simplefs_runtime_test"
+  elf_loader: "claimable_with_vfs_elf_loader_prep_test"
   networking: "not_started"
 
 fast_gates:
@@ -81,6 +82,7 @@ deep_gates:
   - "paging_per_process_address_space_test"
   - "syscall_user_mode_negative_path_test"
   - "syscall_file_io_runtime_test"
+  - "elf_loader_prep_runtime_test"
   - "scheduler_priority_fairness_safety_test"
   - "ramdisk_block_device_runtime_test"
   - "vfs_simplefs_runtime_test"
@@ -131,6 +133,7 @@ routes:
       - "kernel/scheduler.c"
       - "kernel/paging.c"
       - "kernel/e820.c"
+      - "kernel/elf.c"
       - "kernel/frame.c"
       - "kernel/memory.c"
       - "kernel/tss.c"
@@ -144,9 +147,9 @@ routes:
       - "panic_or_fault_evidence_for_negative_paths"
 
 mimo_next_tasks:
-  - id: "elf-loader-prep"
+  - id: "elf-user-process-launch"
     priority: "P0"
-    success: "Prepare the ELF loader path on top of validated file syscalls without weakening existing gates."
+    success: "Launch a VFS-backed ELF as a ring-3 process with a targeted runtime gate, without weakening existing loader, syscall, paging, and scheduler gates."
 
 forbidden_next_breadth:
   - "networking"
