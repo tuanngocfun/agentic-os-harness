@@ -10,6 +10,7 @@
 #include "frame.h"
 #include "allocator.h"
 #include "ramdisk.h"
+#include "vfs.h"
 #include "paging.h"
 #include "tss.h"
 #include "syscall.h"
@@ -147,6 +148,11 @@ static void scheduler_safety_low_b_task(void) {
 #ifdef ENABLE_RAMDISK_SELFTEST
 static uint8_t ramdisk_write_buf[SECTOR_SIZE * 4];
 static uint8_t ramdisk_read_buf[SECTOR_SIZE * 4];
+#endif
+
+#ifdef ENABLE_VFS_SELFTEST
+static uint8_t vfs_write_buf[SECTOR_SIZE * 2 + 37];
+static uint8_t vfs_read_buf[SECTOR_SIZE * 2 + 37];
 #endif
 
 #ifdef ENABLE_ADDRESS_SPACE_SELFTEST
@@ -430,6 +436,132 @@ void kernel_main(void) {
             serial_puts("RAMDISK_OK\n");
         } else {
             serial_puts("RAMDISK_FAIL\n");
+        }
+    }
+#endif
+
+#ifdef ENABLE_VFS_SELFTEST
+    {
+        const char *message = "hello from vfs";
+        uint32_t message_len = (uint32_t)strlen(message);
+        uint32_t big_len = (uint32_t)sizeof(vfs_write_buf);
+        struct vfs_stat stat;
+        int fd;
+
+        serial_puts("VFS_TEST\n");
+
+        int format_ok = vfs_init(ramdisk_get_device()) == VFS_SUCCESS &&
+                        vfs_format() == VFS_SUCCESS;
+        if (format_ok) {
+            serial_puts("VFS_FORMAT_OK\n");
+        }
+
+        int mount_ok = format_ok && vfs_mount() == VFS_SUCCESS;
+        if (mount_ok) {
+            serial_puts("VFS_MOUNT_OK\n");
+        }
+
+        fd = mount_ok ? vfs_open("/hello.txt", VFS_O_CREAT | VFS_O_RDWR | VFS_O_TRUNC) : VFS_EIO;
+        int create_ok = fd >= 0;
+        if (create_ok) {
+            serial_puts("VFS_CREATE_OK\n");
+        }
+
+        int write_ok = create_ok &&
+                       vfs_write(fd, message, message_len) == (int)message_len &&
+                       vfs_close(fd) == VFS_SUCCESS;
+        if (write_ok) {
+            serial_puts("VFS_WRITE_OK\n");
+        } else if (create_ok) {
+            vfs_close(fd);
+        }
+
+        memset(vfs_read_buf, 0, sizeof(vfs_read_buf));
+        fd = write_ok ? vfs_open("/hello.txt", VFS_O_RDONLY) : VFS_EIO;
+        int read_count = fd >= 0 ? vfs_read(fd, vfs_read_buf, message_len) : VFS_EIO;
+        int eof_count = fd >= 0 ? vfs_read(fd, vfs_read_buf + message_len, 1) : VFS_EIO;
+        int read_close_ok = fd >= 0 && vfs_close(fd) == VFS_SUCCESS;
+        int read_ok = read_count == (int)message_len &&
+                      eof_count == 0 &&
+                      read_close_ok &&
+                      memcmp(vfs_read_buf, message, message_len) == 0;
+        if (read_ok) {
+            serial_puts("VFS_READ_OK\n");
+        }
+
+        for (uint32_t i = 0; i < big_len; i++) {
+            vfs_write_buf[i] = (uint8_t)((i * 7 + 3) & 0xFF);
+            vfs_read_buf[i] = 0;
+        }
+
+        fd = read_ok ? vfs_open("/big.bin", VFS_O_CREAT | VFS_O_RDWR | VFS_O_TRUNC) : VFS_EIO;
+        int big_write_ok = fd >= 0 &&
+                           vfs_write(fd, vfs_write_buf, big_len) == (int)big_len &&
+                           vfs_close(fd) == VFS_SUCCESS;
+        if (!big_write_ok && fd >= 0) {
+            vfs_close(fd);
+        }
+
+        memset(vfs_read_buf, 0, sizeof(vfs_read_buf));
+        fd = big_write_ok ? vfs_open("/big.bin", VFS_O_RDONLY) : VFS_EIO;
+        int first_read = fd >= 0 ? vfs_read(fd, vfs_read_buf, 17) : VFS_EIO;
+        int second_read = fd >= 0 ? vfs_read(fd, vfs_read_buf + 17, big_len - 17) : VFS_EIO;
+        int big_eof = fd >= 0 ? vfs_read(fd, vfs_read_buf, 1) : VFS_EIO;
+        int offset_close_ok = fd >= 0 && vfs_close(fd) == VFS_SUCCESS;
+        int offset_ok = first_read == 17 &&
+                        second_read == (int)(big_len - 17) &&
+                        big_eof == 0 &&
+                        offset_close_ok &&
+                        memcmp(vfs_write_buf, vfs_read_buf, big_len) == 0;
+        if (offset_ok) {
+            serial_puts("VFS_OFFSET_OK\n");
+        }
+
+        int stat_ok = vfs_stat("/big.bin", &stat) == VFS_SUCCESS &&
+                      stat.size == big_len &&
+                      stat.allocated_sectors >= 3;
+        if (stat_ok) {
+            serial_puts("VFS_STAT_OK\n");
+        }
+
+        int ro_fd = vfs_open("/hello.txt", VFS_O_RDONLY);
+        int permission_ok = ro_fd >= 0 &&
+                            vfs_write(ro_fd, message, 1) == VFS_EBADF &&
+                            vfs_close(ro_fd) == VFS_SUCCESS;
+
+        int fds[VFS_MAX_OPEN_FILES];
+        int emfile_ok = 1;
+        for (int i = 0; i < VFS_MAX_OPEN_FILES; i++) {
+            fds[i] = vfs_open("/hello.txt", VFS_O_RDONLY);
+            if (fds[i] < 0) {
+                emfile_ok = 0;
+            }
+        }
+        if (vfs_open("/hello.txt", VFS_O_RDONLY) != VFS_EMFILE) {
+            emfile_ok = 0;
+        }
+        for (int i = 0; i < VFS_MAX_OPEN_FILES; i++) {
+            if (fds[i] >= 0) {
+                vfs_close(fds[i]);
+            }
+        }
+
+        int negative_ok = permission_ok &&
+                          emfile_ok &&
+                          vfs_open("/missing.txt", VFS_O_RDONLY) == VFS_ENOENT &&
+                          vfs_open("/nested/path.txt", VFS_O_CREAT | VFS_O_RDWR) == VFS_EINVAL &&
+                          vfs_open("/abcdefghijklmnopqrstuvwxyzabcdef", VFS_O_CREAT | VFS_O_RDWR) == VFS_EINVAL &&
+                          vfs_open("/bad.txt", VFS_O_CREAT) == VFS_EINVAL &&
+                          vfs_read(-1, vfs_read_buf, 1) == VFS_EBADF;
+        if (negative_ok) {
+            serial_puts("VFS_NEGATIVE_OK\n");
+        }
+
+        if (format_ok && mount_ok && create_ok && write_ok && read_ok &&
+            offset_ok && stat_ok && negative_ok) {
+            serial_puts("VFS_OK\n");
+        } else {
+            serial_puts("VFS_FAIL\n");
         }
     }
 #endif

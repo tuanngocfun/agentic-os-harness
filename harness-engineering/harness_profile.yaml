@@ -1,6 +1,6 @@
 profile_version: "2026-06-02"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_scaffold"
+project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_scaffold"
 source_of_truth: true
 
 format_policy:
@@ -53,7 +53,7 @@ claim_status:
   scheduler: "claimable_with_scheduler_preemption_priority_fairness_tests"
   user_mode: "claimable_with_usermode_ring3_test"
   block_device: "claimable_with_ramdisk_runtime_test"
-  filesystem: "not_started"
+  filesystem: "claimable_with_vfs_simplefs_runtime_test"
   networking: "not_started"
 
 fast_gates:
@@ -82,6 +82,7 @@ deep_gates:
   - "syscall_user_mode_negative_path_test"
   - "scheduler_priority_fairness_safety_test"
   - "ramdisk_block_device_runtime_test"
+  - "vfs_simplefs_runtime_test"
   - "shell_command_io_stable_test"
 
 pending_deep_gates: []
@@ -142,9 +143,9 @@ routes:
       - "panic_or_fault_evidence_for_negative_paths"
 
 mimo_next_tasks:
-  - id: "vfs-and-simple-filesystem-foundation"
+  - id: "file-syscalls-and-elf-loader-prep"
     priority: "P0"
-    success: "Build VFS and a simple filesystem on top of the proven ramdisk block-device gate before adding an ELF loader."
+    success: "Expose the proven VFS through validated file syscalls, then prepare the ELF loader path without weakening existing gates."
 
 forbidden_next_breadth:
   - "networking"

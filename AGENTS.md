@@ -72,9 +72,9 @@ make clean
 - Optional markers: `TESTS_PASS`
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 - Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and `help` rendering.
-- `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, and `echo ok` shell I/O.
-- Still not proven: production-grade virtual memory, dynamic heap growth from arbitrary frame runs, SMP-safe scheduling, full userland ABI coverage, filesystem, networking, or graphics.
-- Current next work order: build VFS and a simple filesystem on top of the proven ramdisk block-device gate, while keeping all core gates green.
+- `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, ramdisk block-device evidence, kernel VFS + flat SimpleFS evidence, and `echo ok` shell I/O.
+- Still not proven: production-grade virtual memory, dynamic heap growth from arbitrary frame runs, SMP-safe scheduling, full userland ABI coverage, file syscalls, ELF loading, persistent storage, networking, or graphics.
+- Current next work order: expose the proven VFS through validated file syscalls, then prepare the ELF loader path while keeping all core gates green.
 
 ## Memory Map
 | Address | Content |
@@ -83,7 +83,7 @@ make clean
 | 0x0400-0x04FF | BIOS Data Area |
 | 0x7C00-0x7DFF | Boot sector |
 | 0x1000+ | Kernel binary loaded from generated sector count |
-| 0x70000 | Temporary protected-mode stack |
+| 0x70000 | Temporary stage-2 real/protected-mode stack |
 | 0x90000 | Stage-2 loader body |
 | 0xB8000 | VGA text buffer |
 | 0x100000-0x101FFF | Boot kernel page directory/table |
@@ -103,8 +103,8 @@ make clean
 - KHÔNG dùng `-serial mon:stdio` as automated evidence channel
 - KHÔNG chạy QEMU bằng root
 - KHÔNG passthrough host disks/devices vào QEMU boot tests
-- KHÔNG claim filesystem/networking/graphics or extra shell breadth without targeted runtime tests and updated `harness_profile.yaml` claim status
-- KHÔNG claim full memory protection, full userland syscall coverage, production-grade frame/heap management, filesystem, networking, or graphics without targeted runtime tests and updated claim status
+- KHÔNG claim file syscalls, ELF loading, networking, graphics, persistent storage, or extra shell breadth without targeted runtime tests and updated `harness_profile.yaml` claim status
+- KHÔNG claim full memory protection, full userland syscall coverage, production-grade frame/heap management, persistent storage, networking, or graphics without targeted runtime tests and updated claim status
 
 ## Available Skills
 - `write-bootloader` — Viết/sửa flat boot sector 512 bytes

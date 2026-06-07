@@ -102,6 +102,7 @@ Deep gates are explicit and may rebuild with selftest defines:
 - `make test-syscall-negative`
 - `make test-e820-frame`
 - `make test-ramdisk`
+- `make test-vfs`
 - `make test-scheduler-safety`
 - `make test-shell-io`
 
@@ -133,11 +134,12 @@ Current claim policy:
 - `memory_info` is claimable as E820-backed usable-memory detection through `make test-memory` and `make test-e820-frame`.
 - `frame_allocator` is claimable for allocation, free accounting, reuse, and low-frame exhaustion through `make test-e820-frame`.
 - `allocator` is claimable only as fixed-heap `kmalloc`/`kfree` allocation, reuse, free/coalescing accounting, and exhaustion through `make test-allocator`; it is not frame free/reuse accounting.
-- `block_device` is claimable only as a reserved, mapped ramdisk block device through `make test-ramdisk`; this does not claim a filesystem.
+- `block_device` is claimable only as a reserved, mapped ramdisk block device through `make test-ramdisk`.
+- `filesystem` is claimable only as the kernel VFS + flat SimpleFS runtime gate through `make test-vfs`; this does not claim file syscalls, ELF loading, persistence, directories, delete/rename, or POSIX semantics.
 - `process` is claimable for process-record setup feeding a ring-3 user-mode transition through `make test-usermode` and per-process address-space switching through `make test-address-space`.
 - `user_mode` is claimable only as a ring-3 transition and user/supervisor page-fault proof through `make test-usermode`.
 - Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. `scripts/shell_io_test.sh` is the separate targeted route for `echo ok`; argument-bearing commands beyond that need their own unambiguous I/O proof.
-- Filesystem, networking, graphics mode, and additional shell breadth remain unclaimed until they have targeted runtime gates.
+- File syscalls, ELF loading, networking, graphics mode, and additional shell breadth remain unclaimed until they have targeted runtime gates.
 
 ## Build-Config Rebuild Protocol
 

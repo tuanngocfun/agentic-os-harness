@@ -18,9 +18,9 @@ stage2_start:
     mov ax, cs
     mov ds, ax
     mov es, ax
-    xor ax, ax
+    mov ax, 0x7000
     mov ss, ax
-    mov sp, 0x7C00
+    xor sp, sp
     sti
 
     mov [BOOT_DRIVE], dl
