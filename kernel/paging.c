@@ -127,6 +127,20 @@ int paging_is_user_accessible(uint32_t virtual_addr) {
     return (page_table[table_index] & (PAGE_PRESENT | PAGE_USER)) == (PAGE_PRESENT | PAGE_USER);
 }
 
+int paging_is_user_writable(uint32_t virtual_addr) {
+    uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
+    uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
+
+    if ((active_page_directory[dir_index] & (PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE)) !=
+        (PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE)) {
+        return 0;
+    }
+
+    uint32_t *page_table = (uint32_t *)(active_page_directory[dir_index] & 0xFFFFF000);
+    return (page_table[table_index] & (PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE)) ==
+           (PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE);
+}
+
 uint32_t paging_get_current_directory(void) {
     return (uint32_t)active_page_directory;
 }

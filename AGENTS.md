@@ -72,9 +72,9 @@ make clean
 - Optional markers: `TESTS_PASS`
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 - Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and `help` rendering.
-- `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, ramdisk block-device evidence, kernel VFS + flat SimpleFS evidence, and `echo ok` shell I/O.
-- Still not proven: production-grade virtual memory, dynamic heap growth from arbitrary frame runs, SMP-safe scheduling, full userland ABI coverage, file syscalls, ELF loading, persistent storage, networking, or graphics.
-- Current next work order: expose the proven VFS through validated file syscalls, then prepare the ELF loader path while keeping all core gates green.
+- `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, VFS-backed ring-3 file syscall evidence, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, ramdisk block-device evidence, kernel VFS + flat SimpleFS evidence, and `echo ok` shell I/O.
+- Still not proven: production-grade virtual memory, dynamic heap growth from arbitrary frame runs, SMP-safe scheduling, full userland ABI coverage, ELF loading, persistent storage, networking, or graphics.
+- Current next work order: prepare the ELF loader path while keeping all core gates green.
 
 ## Memory Map
 | Address | Content |
@@ -103,7 +103,7 @@ make clean
 - KHÔNG dùng `-serial mon:stdio` as automated evidence channel
 - KHÔNG chạy QEMU bằng root
 - KHÔNG passthrough host disks/devices vào QEMU boot tests
-- KHÔNG claim file syscalls, ELF loading, networking, graphics, persistent storage, or extra shell breadth without targeted runtime tests and updated `harness_profile.yaml` claim status
+- KHÔNG claim ELF loading, networking, graphics, persistent storage, or extra shell breadth without targeted runtime tests and updated `harness_profile.yaml` claim status
 - KHÔNG claim full memory protection, full userland syscall coverage, production-grade frame/heap management, persistent storage, networking, or graphics without targeted runtime tests and updated claim status
 
 ## Available Skills

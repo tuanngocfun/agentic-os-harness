@@ -56,6 +56,7 @@ require_file "../scripts/timer_preemption_test.sh"
 require_file "../scripts/allocator_test.sh"
 require_file "../scripts/address_space_test.sh"
 require_file "../scripts/syscall_negative_test.sh"
+require_file "../scripts/syscall_file_test.sh"
 require_file "../scripts/e820_test.sh"
 require_file "../scripts/ramdisk_test.sh"
 require_file "../scripts/vfs_test.sh"
@@ -84,7 +85,7 @@ require_grep 'loader:[[:space:]]*"stage2_lba_loader"' "harness_profile.yaml"
 require_grep 'STAGE2_LOAD_SECTORS' "$REPO_ROOT/boot/boot.asm"
 require_grep 'KERNEL_LBA_START' "$REPO_ROOT/boot/stage2.asm"
 require_grep 'STAGE2_OK' "$REPO_ROOT/boot/stage2.asm"
-require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_scaffold"' "harness_profile.yaml"
+require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_scaffold"' "harness_profile.yaml"
 require_grep 'format_policy:' "harness_profile.yaml"
 require_grep 'runtime_evidence:[[:space:]]*"jsonl"' "harness_profile.yaml"
 require_grep 'claim_status:' "harness_profile.yaml"
@@ -96,8 +97,13 @@ require_grep 'stage2[.]bin' "$REPO_ROOT/scripts/boot_test.sh"
 require_grep 'STAGE2_OK' "$REPO_ROOT/scripts/boot_test.sh"
 if grep -q 'ENABLE_SYSCALL_ABI_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-syscall' "$REPO_ROOT/Makefile" && grep -q 'SYSCALL_ABI_OK:ARGS_OK' "$REPO_ROOT/scripts/syscall_test.sh"; then
   if grep -q 'ENABLE_SYSCALL_NEGATIVE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'SYS_TEST_MARKER' "$REPO_ROOT/include/syscall.h" && grep -q 'test-syscall-negative' "$REPO_ROOT/Makefile" && grep -q 'SYSCALL_UNMAPPED_POINTER_OK' "$REPO_ROOT/scripts/syscall_negative_test.sh"; then
-    require_grep 'syscall:[[:space:]]*"claimable_with_syscall_and_ring3_negative_path_tests"' "harness_profile.yaml"
-    require_grep 'test-deep:.*test-syscall-negative' "$REPO_ROOT/Makefile"
+    if grep -q 'ENABLE_SYSCALL_FILE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'SYS_OPEN' "$REPO_ROOT/include/syscall.h" && grep -q 'test-syscall-file' "$REPO_ROOT/Makefile" && grep -q 'SYSCALL_FILE_OK' "$REPO_ROOT/scripts/syscall_file_test.sh"; then
+      require_grep 'syscall:[[:space:]]*"claimable_with_syscall_ring3_negative_and_file_io_tests"' "harness_profile.yaml"
+      require_grep 'test-deep:.*test-syscall-negative.*test-syscall-file' "$REPO_ROOT/Makefile"
+    else
+      require_grep 'syscall:[[:space:]]*"claimable_with_syscall_and_ring3_negative_path_tests"' "harness_profile.yaml"
+      require_grep 'test-deep:.*test-syscall-negative' "$REPO_ROOT/Makefile"
+    fi
   else
     require_grep 'syscall:[[:space:]]*"claimable_with_syscall_test"' "harness_profile.yaml"
   fi

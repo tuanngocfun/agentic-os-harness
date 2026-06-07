@@ -220,7 +220,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-shell-io
+test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-shell-io
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -284,6 +284,10 @@ test-syscall-negative:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_SYSCALL_NEGATIVE_SELFTEST
 	@bash scripts/syscall_negative_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
+test-syscall-file:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_SYSCALL_FILE_SELFTEST
+	@bash scripts/syscall_file_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 test-e820-frame:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_E820_SELFTEST
 	@bash scripts/e820_test.sh; status=$$?; $(MAKE) -B all; exit $$status
@@ -312,4 +316,4 @@ clean: guard-paths
 
 FORCE:
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-shell-io clean FORCE
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-shell-io clean FORCE

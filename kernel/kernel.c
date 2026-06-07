@@ -165,7 +165,7 @@ static void address_space_dummy_task(void) {
 }
 #endif
 
-#if defined(ENABLE_USERMODE_SELFTEST) || defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST)
+#if defined(ENABLE_USERMODE_SELFTEST) || defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST)
 extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
 #endif
 
@@ -191,10 +191,7 @@ static __attribute__((noreturn)) void usermode_selftest_entry(void) {
 }
 #endif
 
-#ifdef ENABLE_SYSCALL_NEGATIVE_SELFTEST
-#define SYSCALL_NEG_STACK_PHYSICAL 0x00930000
-#define SYSCALL_NEG_UNMAPPED_USER_PTR 0x40000000
-
+#if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST)
 static void syscall_marker(uint32_t marker) {
     uint32_t ignored;
     asm volatile(
@@ -204,6 +201,11 @@ static void syscall_marker(uint32_t marker) {
     );
     (void)ignored;
 }
+#endif
+
+#ifdef ENABLE_SYSCALL_NEGATIVE_SELFTEST
+#define SYSCALL_NEG_STACK_PHYSICAL 0x00930000
+#define SYSCALL_NEG_UNMAPPED_USER_PTR 0x40000000
 
 static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
     uint32_t result;
@@ -261,6 +263,178 @@ static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
 }
 #endif
 
+#ifdef ENABLE_SYSCALL_FILE_SELFTEST
+#define SYSCALL_FILE_STACK_PHYSICAL 0x00940000
+
+static uint32_t syscall3(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
+    uint32_t result;
+    asm volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(num), "b"(arg1), "c"(arg2), "d"(arg3)
+    );
+    return result;
+}
+
+static void syscall_file_set_path(char *path) {
+    path[0] = '/';
+    path[1] = 's';
+    path[2] = 'y';
+    path[3] = 's';
+    path[4] = 'f';
+    path[5] = 'i';
+    path[6] = 'l';
+    path[7] = 'e';
+    path[8] = '\0';
+}
+
+static void syscall_file_set_missing_path(char *path) {
+    path[0] = '/';
+    path[1] = 'm';
+    path[2] = 'i';
+    path[3] = 's';
+    path[4] = 's';
+    path[5] = 'i';
+    path[6] = 'n';
+    path[7] = 'g';
+    path[8] = '\0';
+}
+
+static void syscall_file_set_nested_path(char *path) {
+    path[0] = '/';
+    path[1] = 'n';
+    path[2] = 'e';
+    path[3] = 's';
+    path[4] = 't';
+    path[5] = '/';
+    path[6] = 'x';
+    path[7] = '\0';
+}
+
+static __attribute__((noreturn)) void syscall_file_user_entry(void) {
+    char path[16];
+    char missing_path[16];
+    char nested_path[16];
+    uint8_t write_buf[64];
+    uint8_t read_buf[64];
+    struct syscall_file_stat stat;
+    uint32_t fd;
+    uint32_t result;
+    int open_ok;
+    int write_ok;
+    int read_ok;
+    int stat_ok;
+    int negative_ok;
+    int data_ok = 1;
+
+    syscall_file_set_path(path);
+    syscall_file_set_missing_path(missing_path);
+    syscall_file_set_nested_path(nested_path);
+
+    for (uint32_t i = 0; i < sizeof(write_buf); i++) {
+        write_buf[i] = (uint8_t)((i * 5 + 11) & 0xFF);
+        read_buf[i] = 0;
+    }
+
+    fd = syscall3(SYS_OPEN, (uint32_t)path, SYS_O_CREAT | SYS_O_RDWR | SYS_O_TRUNC, 0);
+    open_ok = fd < VFS_MAX_OPEN_FILES;
+    if (open_ok) {
+        syscall_marker(SYSCALL_MARK_FILE_OPEN);
+    } else {
+        syscall_marker(SYSCALL_MARK_FILE_OPEN_FAIL);
+    }
+
+    result = open_ok ? syscall3(SYS_WRITE, fd, (uint32_t)write_buf, sizeof(write_buf)) : SYSCALL_EBADF;
+    write_ok = result == sizeof(write_buf) &&
+               syscall3(SYS_CLOSE, fd, 0, 0) == SYSCALL_SUCCESS;
+    if (write_ok) {
+        syscall_marker(SYSCALL_MARK_FILE_WRITE);
+    } else {
+        syscall_marker(SYSCALL_MARK_FILE_WRITE_FAIL);
+        if (open_ok) {
+            syscall3(SYS_CLOSE, fd, 0, 0);
+        }
+    }
+
+    fd = write_ok ? syscall3(SYS_OPEN, (uint32_t)path, SYS_O_RDONLY, 0) : SYSCALL_EBADF;
+    if (fd >= VFS_MAX_OPEN_FILES) {
+        data_ok = 0;
+    }
+    result = data_ok ? syscall3(SYS_READ, fd, (uint32_t)read_buf, 7) : SYSCALL_EBADF;
+    if (result != 7) {
+        data_ok = 0;
+    }
+    result = data_ok ? syscall3(SYS_READ, fd, (uint32_t)(read_buf + 7), sizeof(read_buf) - 7) : SYSCALL_EBADF;
+    if (result != sizeof(read_buf) - 7) {
+        data_ok = 0;
+    }
+    result = data_ok ? syscall3(SYS_READ, fd, (uint32_t)read_buf, 1) : SYSCALL_EBADF;
+    if (result != 0) {
+        data_ok = 0;
+    }
+    for (uint32_t i = 0; i < sizeof(write_buf); i++) {
+        if (read_buf[i] != write_buf[i]) {
+            data_ok = 0;
+        }
+    }
+    if (fd < VFS_MAX_OPEN_FILES && syscall3(SYS_CLOSE, fd, 0, 0) != SYSCALL_SUCCESS) {
+        data_ok = 0;
+    }
+    read_ok = data_ok;
+    if (read_ok) {
+        syscall_marker(SYSCALL_MARK_FILE_READ);
+    } else {
+        syscall_marker(SYSCALL_MARK_FILE_READ_FAIL);
+    }
+
+    result = read_ok ? syscall3(SYS_STAT, (uint32_t)path, (uint32_t)&stat, 0) : SYSCALL_EBADF;
+    stat_ok = result == SYSCALL_SUCCESS &&
+              stat.size == sizeof(write_buf) &&
+              stat.allocated_sectors >= 1;
+    if (stat_ok) {
+        syscall_marker(SYSCALL_MARK_FILE_STAT);
+    } else {
+        syscall_marker(SYSCALL_MARK_FILE_STAT_FAIL);
+    }
+
+    fd = syscall3(SYS_OPEN, (uint32_t)path, SYS_O_RDONLY, 0);
+    int bad_read_ok = fd < VFS_MAX_OPEN_FILES &&
+                      syscall3(SYS_READ, fd, 0x00100000, 1) == SYSCALL_EFAULT &&
+                      syscall3(SYS_CLOSE, fd, 0, 0) == SYSCALL_SUCCESS;
+    negative_ok = bad_read_ok &&
+                  syscall3(SYS_OPEN, (uint32_t)missing_path, SYS_O_RDONLY, 0) == SYSCALL_ENOENT &&
+                  syscall3(SYS_OPEN, (uint32_t)nested_path, SYS_O_CREAT | SYS_O_RDWR, 0) == SYSCALL_EINVAL &&
+                  syscall3(SYS_CLOSE, 99, 0, 0) == SYSCALL_EBADF;
+    if (negative_ok) {
+        syscall_marker(SYSCALL_MARK_FILE_NEGATIVE);
+    } else {
+        syscall_marker(SYSCALL_MARK_FILE_NEG_FAIL);
+    }
+
+    if (open_ok && write_ok && read_ok && stat_ok && negative_ok) {
+        syscall_marker(SYSCALL_MARK_FILE_DONE);
+    }
+
+    while (1) {
+    }
+}
+
+static void map_user_code_span(uint32_t start, uint32_t end) {
+    uint32_t first = start & 0xFFFFF000;
+    uint32_t last = end & 0xFFFFF000;
+
+    if (first > last) {
+        uint32_t tmp = first;
+        first = last;
+        last = tmp;
+    }
+
+    for (uint32_t page = first; page <= last + 0x1000; page += 0x1000) {
+        paging_map_page(page, page, PAGE_PRESENT | PAGE_USER);
+    }
+}
+#endif
+
 void kernel_main(void) {
     serial_init();
     serial_puts("KERNEL_INIT_OK\n");
@@ -280,6 +454,14 @@ void kernel_main(void) {
     allocator_init();
     if (ramdisk_init() != BLKDEV_SUCCESS) {
         serial_puts("RAMDISK_INIT_FATAL\n");
+        while (1) {
+            asm volatile("cli; hlt");
+        }
+    }
+    if (vfs_init(ramdisk_get_device()) != VFS_SUCCESS ||
+        vfs_format() != VFS_SUCCESS ||
+        vfs_mount() != VFS_SUCCESS) {
+        serial_puts("VFS_INIT_FATAL\n");
         while (1) {
             asm volatile("cli; hlt");
         }
@@ -528,6 +710,9 @@ void kernel_main(void) {
         int permission_ok = ro_fd >= 0 &&
                             vfs_write(ro_fd, message, 1) == VFS_EBADF &&
                             vfs_close(ro_fd) == VFS_SUCCESS;
+        if (!permission_ok) {
+            serial_puts("VFS_NEG_PERMISSION_FAIL\n");
+        }
 
         int fds[VFS_MAX_OPEN_FILES];
         int emfile_ok = 1;
@@ -545,14 +730,38 @@ void kernel_main(void) {
                 vfs_close(fds[i]);
             }
         }
+        if (!emfile_ok) {
+            serial_puts("VFS_NEG_EMFILE_FAIL\n");
+        }
+
+        int missing_ok = vfs_open("/missing.txt", VFS_O_RDONLY) == VFS_ENOENT;
+        int nested_ok = vfs_open("/nested/path.txt", VFS_O_CREAT | VFS_O_RDWR) == VFS_EINVAL;
+        int long_name_ok = vfs_open("/abcdefghijklmnopqrstuvwxyzabcdef", VFS_O_CREAT | VFS_O_RDWR) == VFS_EINVAL;
+        int bad_flags_ok = vfs_open("/bad.txt", VFS_O_CREAT) == VFS_EINVAL;
+        int bad_fd_ok = vfs_read(-1, vfs_read_buf, 1) == VFS_EBADF;
+        if (!missing_ok) {
+            serial_puts("VFS_NEG_MISSING_FAIL\n");
+        }
+        if (!nested_ok) {
+            serial_puts("VFS_NEG_NESTED_FAIL\n");
+        }
+        if (!long_name_ok) {
+            serial_puts("VFS_NEG_LONG_NAME_FAIL\n");
+        }
+        if (!bad_flags_ok) {
+            serial_puts("VFS_NEG_BAD_FLAGS_FAIL\n");
+        }
+        if (!bad_fd_ok) {
+            serial_puts("VFS_NEG_BAD_FD_FAIL\n");
+        }
 
         int negative_ok = permission_ok &&
                           emfile_ok &&
-                          vfs_open("/missing.txt", VFS_O_RDONLY) == VFS_ENOENT &&
-                          vfs_open("/nested/path.txt", VFS_O_CREAT | VFS_O_RDWR) == VFS_EINVAL &&
-                          vfs_open("/abcdefghijklmnopqrstuvwxyzabcdef", VFS_O_CREAT | VFS_O_RDWR) == VFS_EINVAL &&
-                          vfs_open("/bad.txt", VFS_O_CREAT) == VFS_EINVAL &&
-                          vfs_read(-1, vfs_read_buf, 1) == VFS_EBADF;
+                          missing_ok &&
+                          nested_ok &&
+                          long_name_ok &&
+                          bad_flags_ok &&
+                          bad_fd_ok;
         if (negative_ok) {
             serial_puts("VFS_NEGATIVE_OK\n");
         }
@@ -618,6 +827,28 @@ void kernel_main(void) {
         enter_user_mode((uint32_t)syscall_negative_user_entry, USER_STACK_TOP);
 
         serial_puts("SYSCALL_NEGATIVE_FAIL\n");
+        while (1) {
+            asm volatile("cli; hlt");
+        }
+    }
+#endif
+
+#ifdef ENABLE_SYSCALL_FILE_SELFTEST
+    {
+        serial_puts("SYSCALL_FILE_TEST\n");
+
+        uint32_t user_stack_page = USER_STACK_TOP - 4096;
+
+        vfs_format();
+        vfs_mount();
+        map_user_code_span((uint32_t)syscall3, (uint32_t)syscall_file_user_entry);
+        paging_map_page(user_stack_page,
+                        SYSCALL_FILE_STACK_PHYSICAL,
+                        PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+
+        enter_user_mode((uint32_t)syscall_file_user_entry, USER_STACK_TOP);
+
+        serial_puts("SYSCALL_FILE_FAIL\n");
         while (1) {
             asm volatile("cli; hlt");
         }

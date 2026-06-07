@@ -14,7 +14,25 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
 #define SYS_TEST_ABI 6
 #define SYS_USERMODE_TEST 7
 #define SYS_TEST_MARKER 8
-#define SYS_MAX     8
+#define SYS_OPEN    9
+#define SYS_READ    10
+#define SYS_WRITE   11
+#define SYS_CLOSE   12
+#define SYS_STAT    13
+#define SYS_MAX     13
+
+#define SYS_O_RDONLY 0x0001
+#define SYS_O_WRONLY 0x0002
+#define SYS_O_RDWR   (SYS_O_RDONLY | SYS_O_WRONLY)
+#define SYS_O_CREAT  0x0100
+#define SYS_O_TRUNC  0x0200
+
+struct syscall_file_stat {
+    uint32_t size;
+    uint32_t start_sector;
+    uint32_t allocated_sectors;
+    uint32_t flags;
+};
 
 // Error codes
 #define SYSCALL_SUCCESS     0
@@ -22,6 +40,12 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
 #define SYSCALL_EFAULT      ((uint32_t)-2)  // Bad address
 #define SYSCALL_EPERM       ((uint32_t)-3)  // Permission denied
 #define SYSCALL_ENOSYS      ((uint32_t)-4)  // Invalid syscall number
+#define SYSCALL_ENOENT      ((uint32_t)-5)  // No such file
+#define SYSCALL_ENOSPC      ((uint32_t)-6)  // No space left
+#define SYSCALL_EIO         ((uint32_t)-7)  // I/O error
+#define SYSCALL_EMFILE      ((uint32_t)-8)  // Too many open files
+#define SYSCALL_EBADF       ((uint32_t)-9)  // Bad file descriptor
+#define SYSCALL_EEXIST      ((uint32_t)-10) // File exists
 
 // User-space address range (0x40000000 - 0xBFFFFFFF)
 #define USER_SPACE_START    0x40000000
@@ -33,5 +57,16 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
 #define SYSCALL_MARK_UNMAPPED_POINTER  4
 #define SYSCALL_MARK_RING3_OK          5
 #define SYSCALL_MARK_DONE              6
+#define SYSCALL_MARK_FILE_OPEN         7
+#define SYSCALL_MARK_FILE_WRITE        8
+#define SYSCALL_MARK_FILE_READ         9
+#define SYSCALL_MARK_FILE_STAT         10
+#define SYSCALL_MARK_FILE_NEGATIVE     11
+#define SYSCALL_MARK_FILE_DONE         12
+#define SYSCALL_MARK_FILE_OPEN_FAIL    13
+#define SYSCALL_MARK_FILE_WRITE_FAIL   14
+#define SYSCALL_MARK_FILE_READ_FAIL    15
+#define SYSCALL_MARK_FILE_STAT_FAIL    16
+#define SYSCALL_MARK_FILE_NEG_FAIL     17
 
 #endif

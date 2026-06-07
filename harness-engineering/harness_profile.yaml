@@ -1,6 +1,6 @@
 profile_version: "2026-06-02"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_scaffold"
+project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_scaffold"
 source_of_truth: true
 
 format_policy:
@@ -47,7 +47,7 @@ claim_status:
   frame_allocator: "claimable_with_e820_frame_lifecycle_test"
   allocator: "claimable_with_allocator_runtime_test"
   paging: "claimable_with_map_fault_user_supervisor_and_address_space_tests"
-  syscall: "claimable_with_syscall_and_ring3_negative_path_tests"
+  syscall: "claimable_with_syscall_ring3_negative_and_file_io_tests"
   exception_panic: "claimable_with_exception_test_suite"
   process: "claimable_with_user_process_record_ring3_entry_and_address_space_isolation_tests"
   scheduler: "claimable_with_scheduler_preemption_priority_fairness_tests"
@@ -80,6 +80,7 @@ deep_gates:
   - "process_address_space_isolation_test"
   - "paging_per_process_address_space_test"
   - "syscall_user_mode_negative_path_test"
+  - "syscall_file_io_runtime_test"
   - "scheduler_priority_fairness_safety_test"
   - "ramdisk_block_device_runtime_test"
   - "vfs_simplefs_runtime_test"
@@ -143,9 +144,9 @@ routes:
       - "panic_or_fault_evidence_for_negative_paths"
 
 mimo_next_tasks:
-  - id: "file-syscalls-and-elf-loader-prep"
+  - id: "elf-loader-prep"
     priority: "P0"
-    success: "Expose the proven VFS through validated file syscalls, then prepare the ELF loader path without weakening existing gates."
+    success: "Prepare the ELF loader path on top of validated file syscalls without weakening existing gates."
 
 forbidden_next_breadth:
   - "networking"
