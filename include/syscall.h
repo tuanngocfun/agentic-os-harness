@@ -19,7 +19,13 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
 #define SYS_WRITE   11
 #define SYS_CLOSE   12
 #define SYS_STAT    13
-#define SYS_MAX     13
+#define SYS_GETPID  14
+#define SYS_EXIT    15
+#define SYS_WAIT    16
+#define SYS_FORK    17
+#define SYS_EXEC    18
+#define SYS_BRK     19
+#define SYS_MAX     19
 
 #define SYS_O_RDONLY 0x0001
 #define SYS_O_WRONLY 0x0002

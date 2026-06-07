@@ -74,6 +74,12 @@ struct process *process_create(uint32_t entry_point, int is_user) {
     proc->dynamic_priority = PROCESS_DEFAULT_PRIORITY;
     proc->run_count = 0;
 
+    // Initialize lifecycle fields
+    proc->parent_pid = 0;       // No parent initially
+    proc->exit_code = 0;
+    proc->exited = 0;
+    proc->waited = 0;
+
     proc->kernel_stack = allocate_stack(KERNEL_STACK_SIZE);
     if (!proc->kernel_stack) {
         proc->state = PROCESS_DEAD;
@@ -194,6 +200,18 @@ void process_destroy(struct process *proc) {
 struct process *process_get_current(void) {
     for (int i = 0; i < MAX_PROCESSES; i++) {
         if (process_table[i].state == PROCESS_RUNNING) {
+            return &process_table[i];
+        }
+    }
+    return NULL;
+}
+
+struct process *process_get_by_pid(uint32_t pid) {
+    if (pid == 0) {
+        return NULL;
+    }
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (process_table[i].pid == pid && process_table[i].state != PROCESS_DEAD) {
             return &process_table[i];
         }
     }

@@ -31,6 +31,12 @@ struct process {
     uint32_t *kernel_stack;
     uint32_t *user_stack;
     struct process *next;
+
+    // Process lifecycle fields
+    uint32_t parent_pid;        // Parent process ID (0 = no parent)
+    uint32_t exit_code;         // Exit status code
+    uint32_t exited;            // 1 if process has exited
+    uint32_t waited;            // 1 if parent has waited on this process
 };
 
 void process_init(void);
@@ -38,6 +44,7 @@ struct process *process_create(uint32_t entry_point, int is_user);
 struct process *process_create_preemptive(uint32_t entry_point);
 void process_destroy(struct process *proc);
 struct process *process_get_current(void);
+struct process *process_get_by_pid(uint32_t pid);
 uint32_t process_get_count(void);
 void process_set_address_space(struct process *proc, uint32_t cr3);
 

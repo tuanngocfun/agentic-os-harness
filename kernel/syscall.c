@@ -5,6 +5,9 @@
 #include "serial.h"
 #include "paging.h"
 #include "vfs.h"
+#include "process.h"
+#include "scheduler.h"
+#include "elf.h"
 #include <stdint.h>
 
 void syscall_init(void) {
@@ -351,6 +354,190 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
 
         case SYS_STAT:
             return syscall_stat(arg1, arg2, caller_cs);
+
+        case SYS_GETPID: {
+            struct process *current = process_get_current();
+            return current ? current->pid : 0;
+        }
+
+        case SYS_EXIT: {
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
+
+            struct process *current = process_get_current();
+            if (!current) {
+                return SYSCALL_EINVAL;
+            }
+
+            // Mark process as exited with exit code
+            current->exit_code = arg1;
+            current->exited = 1;
+            current->state = PROCESS_DEAD;
+
+            // Free kernel stack
+            if (current->kernel_stack) {
+                // Stack will be freed by process_destroy
+            }
+
+            // Schedule next process - this never returns
+            scheduler_schedule();
+
+            // Should never reach here
+            while (1) { asm volatile("hlt"); }
+        }
+
+        case SYS_WAIT: {
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
+
+            struct process *current = process_get_current();
+            if (!current) {
+                return (uint32_t)-1;
+            }
+
+            // Look for exited child processes
+            for (int i = 0; i < MAX_PROCESSES; i++) {
+                struct process *child = process_get_by_pid(i);
+                if (child && child->parent_pid == current->pid &&
+                    child->exited && !child->waited) {
+
+                    // Copy exit code to user space if requested
+                    uint32_t *status_ptr = (uint32_t *)arg1;
+                    if (status_ptr && is_user_pointer_writable((uint32_t)status_ptr, 4)) {
+                        *status_ptr = child->exit_code;
+                    }
+
+                    child->waited = 1;
+                    uint32_t child_pid = child->pid;
+
+                    // Cleanup zombie process
+                    process_destroy(child);
+
+                    return child_pid;
+                }
+            }
+
+            // No exited children found
+            return (uint32_t)-1;  // ECHILD
+        }
+
+        case SYS_FORK: {
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
+
+            struct process *parent = process_get_current();
+            if (!parent) {
+                return (uint32_t)-1;
+            }
+
+            // Create new process with same entry point
+            struct process *child = process_create(parent->eip, 1);
+            if (!child) {
+                return (uint32_t)-1;  // ENOMEM
+            }
+
+            // Set up parent-child relationship
+            child->parent_pid = parent->pid;
+
+            // For now: share address space (simplified fork)
+            // TODO: Implement proper copy-on-write or full page copy
+            child->cr3 = parent->cr3;
+
+            // Copy parent's register state so child resumes at same point
+            // In a real fork, we'd need to copy the entire interrupt frame
+            // For now, child will return 0 from syscall, parent gets child PID
+
+            // Mark child as ready to run
+            child->state = PROCESS_READY;
+
+            // Add child to scheduler
+            extern void scheduler_add(struct process *proc);
+            scheduler_add(child);
+
+            // Parent returns child PID, child will return 0
+            // (Child's return value would be set when it actually runs)
+            return child->pid;
+        }
+
+        case SYS_EXEC: {
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
+
+            // Validate path pointer
+            const char *path = (const char *)arg1;
+            if (!is_user_pointer_valid((uint32_t)path, 1)) {
+                return SYSCALL_EFAULT;
+            }
+
+            // Copy path to kernel space (max 256 bytes)
+            char kernel_path[256];
+            int i;
+            for (i = 0; i < 255; i++) {
+                if (!is_user_pointer_valid((uint32_t)(path + i), 1)) {
+                    return SYSCALL_EFAULT;
+                }
+                kernel_path[i] = path[i];
+                if (kernel_path[i] == '\0') break;
+            }
+            kernel_path[255] = '\0';
+
+            // Load ELF from VFS
+            struct elf_load_info info;
+            int ret = elf_load_from_vfs(kernel_path, &info);
+            if (ret != ELF_SUCCESS) {
+                // Return appropriate error
+                if (ret == ELF_ENOENT) return SYSCALL_ENOENT;
+                if (ret == ELF_EINVAL) return SYSCALL_EINVAL;
+                return SYSCALL_EIO;
+            }
+
+            // ELF is now loaded into current address space
+            // We need to jump to the entry point
+            // This is tricky - we need to modify the interrupt frame
+            // For now, just return the entry point and let user code handle it
+            // A proper implementation would modify the saved EIP in the interrupt frame
+
+            serial_puts("EXEC loaded entry=");
+            serial_put_uint32(info.entry);
+            serial_puts("\n");
+
+            // TODO: Properly jump to entry point by modifying interrupt frame
+            // For now, return entry point (user code must jump manually)
+            return info.entry;
+        }
+
+        case SYS_BRK: {
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
+
+            // For now: return a fixed heap region
+            // TODO: Implement dynamic heap growth
+            // This would require tracking per-process heap boundary
+            // and allocating/freeing pages as needed
+
+            uint32_t requested_brk = arg1;
+            uint32_t heap_start = 0x50000000;  // Fixed heap start
+            uint32_t heap_limit = 0x60000000;  // Fixed heap limit (256MB)
+
+            if (requested_brk == 0) {
+                // Query current brk
+                return heap_start;
+            }
+
+            if (requested_brk < heap_start || requested_brk > heap_limit) {
+                // Invalid brk value
+                return heap_start;  // Return current brk unchanged
+            }
+
+            // TODO: Actually allocate/free pages between old and new brk
+            // For now, just return the requested value
+            return requested_brk;
+        }
 
         default:
             return SYSCALL_ENOSYS;
