@@ -12,6 +12,7 @@ SERIAL_CLEAN="$BUILD_DIR/serial.e820.clean.log"
 QEMU_LOG="$BUILD_DIR/qemu.e820.log"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
 QEMU="${QEMU:-qemu-system-i386}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -33,6 +34,7 @@ echo "=== Testing E820 Memory Map Detection ==="
 : > "$QEMU_LOG"
 
 timeout --preserve-status "$TIMEOUT_SECONDS" "$QEMU" \
+  -L "$QEMU_BIOS_DIR" \
   -drive file="$OS_IMG",format=raw \
   -m 512M \
   -serial file:"$SERIAL_LOG" \

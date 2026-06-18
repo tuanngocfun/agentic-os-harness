@@ -4,7 +4,8 @@
 #include <stdint.h>
 
 void syscall_init(void);
-uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t caller_cs);
+uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uint32_t arg3,
+                         uint32_t caller_cs, uint32_t frame_ptr);
 
 #define SYS_PUTS    1
 #define SYS_GETCHAR 2
@@ -52,6 +53,8 @@ struct syscall_file_stat {
 #define SYSCALL_EMFILE      ((uint32_t)-8)  // Too many open files
 #define SYSCALL_EBADF       ((uint32_t)-9)  // Bad file descriptor
 #define SYSCALL_EEXIST      ((uint32_t)-10) // File exists
+#define SYSCALL_ECHILD      ((uint32_t)-11) // No child process
+#define SYSCALL_ENOMEM      ((uint32_t)-12) // Out of memory
 
 // User-space address range (0x40000000 - 0xBFFFFFFF)
 #define USER_SPACE_START    0x40000000
@@ -74,5 +77,14 @@ struct syscall_file_stat {
 #define SYSCALL_MARK_FILE_READ_FAIL    15
 #define SYSCALL_MARK_FILE_STAT_FAIL    16
 #define SYSCALL_MARK_FILE_NEG_FAIL     17
+#define SYSCALL_MARK_PROCESS_GETPID    18
+#define SYSCALL_MARK_PROCESS_BRK_QUERY 19
+#define SYSCALL_MARK_PROCESS_BRK_GROW  20
+#define SYSCALL_MARK_PROCESS_BRK_RW    21
+#define SYSCALL_MARK_PROCESS_BRK_SHRINK 22
+#define SYSCALL_MARK_PROCESS_WAIT_NEG  23
+#define SYSCALL_MARK_PROCESS_EXEC_ENTERED 24
+#define SYSCALL_MARK_PROCESS_DONE      25
+#define SYSCALL_MARK_PROCESS_FAIL      26
 
 #endif

@@ -12,6 +12,7 @@ EVIDENCE_LOG="$BUILD_DIR/evidence.jsonl"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
 TASK_NAME="${TASK_NAME:-memory-detection-test}"
 QEMU="${QEMU:-qemu-system-i386}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
 EXPECTED_MEMORY_KB="${EXPECTED_MEMORY_KB:-524288}"
 MIN_USABLE_MEMORY_KB="${MIN_USABLE_MEMORY_KB:-520000}"
 
@@ -97,6 +98,7 @@ started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 set +e
 timeout "$TIMEOUT_SECONDS" "$QEMU" \
+  -L "$QEMU_BIOS_DIR" \
   -drive file="$OS_IMG",format=raw \
   -m 512M \
   -serial file:"$SERIAL_LOG" \

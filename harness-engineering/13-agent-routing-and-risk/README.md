@@ -23,11 +23,12 @@ Proven now:
 - Syscall negative-path selftest proves ring-3 valid syscall execution and controlled errors for invalid syscall numbers, kernel-space pointers, and unmapped user pointers.
 - Memory selftest proves E820-backed usable-memory detection for the configured 512 MiB QEMU run. E820/frame selftest proves E820 map handoff and physical frame allocation/free/reuse/exhaustion. Allocator selftest proves fixed-heap `kmalloc`/`kfree` allocation, reuse, free/coalescing accounting, and exhaustion.
 - User-mode selftest proves a ring-3 transition and controlled user/supervisor page fault. It does not prove full userland.
-- VFS and SimpleFS selftests prove a volatile root-only flat filesystem on ramdisk. File syscall selftest proves VFS-backed ring-3 open/read/write/close/stat. ELF loader prep selftest proves VFS-backed ELF32/i386 header validation, PT_LOAD materialization into user-mapped pages, BSS zero-fill, and negative paths.
+- VFS and SimpleFS selftests prove a volatile root-only flat filesystem on ramdisk. File syscall selftest proves VFS-backed ring-3 open/read/write/close/stat. ELF loader prep selftest proves VFS-backed ELF32/i386 header validation, PT_LOAD materialization into user-mapped pages, BSS zero-fill, and negative paths. Process syscall selftest proves ring-3 `getpid`, dynamic `brk` query/grow/read-write/shrink, no-child `wait`, and `exec` transfer into a VFS-backed ELF entry.
 
 Not proven:
 - Production-grade virtual memory or dynamic heap growth from arbitrary frame runs.
 - Full userland syscall ABI coverage beyond the proven syscall set and negative paths.
+- True `fork` child-return semantics, blocking `wait`, or full exec address-space replacement with argv/envp.
 - SMP-safe scheduling or production-grade synchronization.
 - ELF ring-3 process launch/execution, persistent storage, networking, graphics, and production-grade userland.
 
@@ -55,8 +56,8 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | Scope | Rating | Why |
 |---|---:|---|
 | Boot-to-shell teaching milestone | 80% | Build, boot markers, keyboard IRQ, shell dispatch, and VGA runtime proof pass. |
-| Credible protected OS core | 76% | GDT/IDT exist; timer ticks, syscall ABI plus ring-3 negative paths, exception panic, cooperative and preemptive scheduler evidence, scheduler priority/fairness markers, paging fault evidence, user/supervisor enforcement, E820/frame lifecycle evidence, heap allocator behavior, ring-3 entry, and per-process CR3 isolation have targeted gates, but production-grade VM, SMP safety, and full userland remain unproven. |
-| Blended current project promise | 80% | Real stage-one implementation plus several stage-two proofs; remaining risk is breadth and hardening, not the three previously pending core proof routes. |
+| Credible protected OS core | 78% | GDT/IDT exist; timer ticks, syscall ABI plus ring-3 negative paths, file/process syscall gates, exception panic, cooperative and preemptive scheduler evidence, scheduler priority/fairness markers, paging fault evidence, user/supervisor enforcement, E820/frame lifecycle evidence, heap allocator behavior, ring-3 entry, and per-process CR3 isolation have targeted gates, but production-grade VM, SMP safety, and full userland remain unproven. |
+| Blended current project promise | 82% | Real stage-one implementation plus several stage-two proofs; remaining risk is deeper Unix-like process semantics and hardening, not storage or ELF-entry plumbing. |
 
 ## Routing Matrix
 
@@ -75,6 +76,7 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | `user_mode` | GDT/TSS selectors, user-mode entry, syscall/exception boundary | `make test-usermode` proves ring-3 transition and supervisor-page fault from user mode; address-space isolation is separately proven by `make test-address-space` | Userland ABI completeness or syscall negative-path coverage |
 | `syscall_negative` | syscall validation, page-aware user pointer checks, ring-3 syscall harness | `make test-syscall-negative` proves invalid numbers, kernel pointers, unmapped user pointers, and valid ring-3 syscall marker path | Complete POSIX-style syscall ABI or resource-limit policy |
 | `elf_loader_prep` | ELF parser/loader, VFS-backed file reads, user-page materialization | `make test-elf-loader` proves valid ELF32/i386 PT_LOAD copy, BSS zero-fill, metadata, and invalid/truncated/missing rejection | Actual ring-3 process launch, argv/envp, dynamic linking, or persistent storage |
+| `process_syscall_elf_entry` | process syscall ABI, brk page lifecycle, VFS-backed exec entry transfer | `make test-process-syscall` proves ring-3 `getpid`, `brk` query/grow/read-write/shrink, no-child `wait`, and transfer into a tiny ELF entry | True `fork`, blocking `wait`, exec address-space replacement, argv/envp, dynamic linking, or persistent storage |
 
 ## Format Policy
 
@@ -87,8 +89,8 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Next MiMo Tasks
 
-1. `elf-user-process-launch`
-   Use the proven VFS/file-syscall/ELF-loader-prep path to launch a tiny ELF as a ring-3 process with a dedicated runtime gate.
+1. `fork-wait-exec-replacement-hardening`
+   Build on the proven process syscall + ELF-entry gate to implement true `fork` child-return semantics, zombie wait/reap coverage, and exec address-space replacement with a dedicated runtime gate.
 
 2. `core-stress-and-static-hardening`
    Re-run syscall, scheduler, paging, E820, frame, allocator, VFS, and ELF-loader gates under broader stress/static review before adding unrelated OS breadth.

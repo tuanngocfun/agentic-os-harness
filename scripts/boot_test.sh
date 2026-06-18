@@ -13,6 +13,7 @@ LOCK_DIR="$BUILD_DIR/.boot_test.lock"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-5}"
 TASK_NAME="${TASK_NAME:-boot-test}"
 QEMU="${QEMU:-qemu-system-i386}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
 ALLOW_QEMU_EXIT="${ALLOW_QEMU_EXIT:-0}"
 
 fail() {
@@ -107,6 +108,7 @@ started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 set +e
 timeout "$TIMEOUT_SECONDS" "$QEMU" \
+  -L "$QEMU_BIOS_DIR" \
   -drive file="$OS_IMG",format=raw \
   -m 512M \
   -serial file:"$SERIAL_LOG" \

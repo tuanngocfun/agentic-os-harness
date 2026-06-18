@@ -86,7 +86,7 @@ require_grep 'loader:[[:space:]]*"stage2_lba_loader"' "harness_profile.yaml"
 require_grep 'STAGE2_LOAD_SECTORS' "$REPO_ROOT/boot/boot.asm"
 require_grep 'KERNEL_LBA_START' "$REPO_ROOT/boot/stage2.asm"
 require_grep 'STAGE2_OK' "$REPO_ROOT/boot/stage2.asm"
-require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_prep"' "harness_profile.yaml"
+require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_prep_process_syscall_elf_entry"' "harness_profile.yaml"
 require_grep 'format_policy:' "harness_profile.yaml"
 require_grep 'runtime_evidence:[[:space:]]*"jsonl"' "harness_profile.yaml"
 require_grep 'claim_status:' "harness_profile.yaml"
@@ -190,7 +190,9 @@ else
 fi
 if grep -q 'ENABLE_USERMODE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-usermode' "$REPO_ROOT/Makefile" && grep -q 'USERMODE_RING3_OK' "$REPO_ROOT/scripts/usermode_test.sh" && rg -q 'enter_user_mode|switch_to_usermode' "$REPO_ROOT/kernel" "$REPO_ROOT/include" 2>/dev/null; then
   require_grep 'user_mode:[[:space:]]*"claimable_with_usermode_ring3_test"' "harness_profile.yaml"
-  if grep -q 'ENABLE_ADDRESS_SPACE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-address-space' "$REPO_ROOT/Makefile" && grep -q 'ADDRSPACE_ISOLATION_OK' "$REPO_ROOT/scripts/address_space_test.sh"; then
+  if grep -q 'ENABLE_PROCESS_SYSCALL_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-process-syscall' "$REPO_ROOT/Makefile" && grep -q 'PROCESS_OK' "$REPO_ROOT/scripts/process_syscall_test.sh"; then
+    require_grep 'process:[[:space:]]*"claimable_with_user_process_record_ring3_entry_address_space_and_process_syscall_elf_entry_tests"' "harness_profile.yaml"
+  elif grep -q 'ENABLE_ADDRESS_SPACE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-address-space' "$REPO_ROOT/Makefile" && grep -q 'ADDRSPACE_ISOLATION_OK' "$REPO_ROOT/scripts/address_space_test.sh"; then
     require_grep 'process:[[:space:]]*"claimable_with_user_process_record_ring3_entry_and_address_space_isolation_tests"' "harness_profile.yaml"
   else
     require_grep 'process:[[:space:]]*"partial_claimable_user_process_record_ring3_entry_test"' "harness_profile.yaml"

@@ -11,6 +11,7 @@ QEMU_LOG="$BUILD_DIR/qemu.exception.log"
 EVIDENCE_LOG="$BUILD_DIR/evidence.jsonl"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
 QEMU="${QEMU:-qemu-system-i386}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
 
 EXCEPTION_VECTOR="${EXCEPTION_VECTOR:-6}"
 
@@ -117,6 +118,7 @@ started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 set +e
 timeout "$TIMEOUT_SECONDS" "$QEMU" \
+  -L "$QEMU_BIOS_DIR" \
   -drive file="$OS_IMG",format=raw \
   -m 512M \
   -serial file:"$SERIAL_LOG" \

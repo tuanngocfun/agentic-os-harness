@@ -156,7 +156,7 @@ static uint8_t vfs_write_buf[SECTOR_SIZE * 2 + 37];
 static uint8_t vfs_read_buf[SECTOR_SIZE * 2 + 37];
 #endif
 
-#ifdef ENABLE_ELF_LOADER_SELFTEST
+#if defined(ENABLE_ELF_LOADER_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
 #define ELF_TEST_VADDR 0x40000000u
 #define ELF_TEST_ENTRY (ELF_TEST_VADDR + 0x20u)
 #define ELF_TEST_FILE_SIZE 256u
@@ -165,10 +165,15 @@ static uint8_t vfs_read_buf[SECTOR_SIZE * 2 + 37];
 #define ELF_TEST_SEGMENT_MEM_SIZE 64u
 
 static uint8_t elf_test_image[ELF_TEST_FILE_SIZE];
+#endif
+
+#ifdef ENABLE_ELF_LOADER_SELFTEST
 static uint8_t elf_bad_image[ELF_TEST_FILE_SIZE];
 static uint8_t elf_trunc_image[32];
 static uint8_t elf_kernel_addr_image[ELF_TEST_FILE_SIZE];
+#endif
 
+#if defined(ENABLE_ELF_LOADER_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
 static void elf_put16(uint8_t *buf, uint32_t offset, uint16_t value) {
     buf[offset] = (uint8_t)(value & 0xFF);
     buf[offset + 1] = (uint8_t)((value >> 8) & 0xFF);
@@ -241,7 +246,9 @@ static int elf_write_fixture(const char *path, const uint8_t *buf, uint32_t size
 
     return status == (int)size;
 }
+#endif
 
+#ifdef ENABLE_ELF_LOADER_SELFTEST
 static int elf_loaded_segment_ok(void) {
     const uint8_t *loaded = (const uint8_t *)ELF_TEST_VADDR;
     const uint8_t *expected = elf_test_image + ELF_TEST_SEGMENT_OFFSET;
@@ -270,7 +277,8 @@ static void address_space_dummy_task(void) {
 }
 #endif
 
-#if defined(ENABLE_USERMODE_SELFTEST) || defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST)
+#if defined(ENABLE_USERMODE_SELFTEST) || defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || \
+    defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
 extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
 #endif
 
@@ -297,7 +305,8 @@ static __attribute__((noreturn)) void usermode_selftest_entry(void) {
 }
 #endif
 
-#if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST)
+#if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || \
+    defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
 static void syscall_marker(uint32_t marker) {
     uint32_t ignored = SYS_TEST_MARKER;
     asm volatile(
@@ -308,6 +317,7 @@ static void syscall_marker(uint32_t marker) {
     );
     (void)ignored;
 }
+
 #endif
 
 #ifdef ENABLE_SYSCALL_NEGATIVE_SELFTEST
@@ -380,9 +390,7 @@ static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
 }
 #endif
 
-#ifdef ENABLE_SYSCALL_FILE_SELFTEST
-#define SYSCALL_FILE_STACK_PHYSICAL 0x00940000
-
+#if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
 static uint32_t syscall3(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     asm volatile(
         "int $0x80"
@@ -392,6 +400,13 @@ static uint32_t syscall3(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
     );
     return num;
 }
+#endif
+
+#ifdef ENABLE_SYSCALL_FILE_SELFTEST
+#define SYSCALL_FILE_STACK_PHYSICAL 0x00940000
+#define SYSCALL_FILE_DATA_VIRTUAL 0xAFFF0000
+#define SYSCALL_FILE_DATA_PHYSICAL 0x00941000
+#define SYSCALL_FILE_BUFFER_SIZE 64
 
 static void syscall_file_set_path(char *path) {
     path[0] = '/';
@@ -429,12 +444,12 @@ static void syscall_file_set_nested_path(char *path) {
 }
 
 static __attribute__((noreturn)) void syscall_file_user_entry(void) {
-    char path[16];
-    char missing_path[16];
-    char nested_path[16];
-    uint8_t write_buf[64];
-    uint8_t read_buf[64];
-    struct syscall_file_stat stat;
+    char *path = (char *)SYSCALL_FILE_DATA_VIRTUAL;
+    char *missing_path = (char *)(SYSCALL_FILE_DATA_VIRTUAL + 16);
+    char *nested_path = (char *)(SYSCALL_FILE_DATA_VIRTUAL + 32);
+    uint8_t *write_buf = (uint8_t *)(SYSCALL_FILE_DATA_VIRTUAL + 64);
+    uint8_t *read_buf = (uint8_t *)(SYSCALL_FILE_DATA_VIRTUAL + 128);
+    struct syscall_file_stat *stat = (struct syscall_file_stat *)(SYSCALL_FILE_DATA_VIRTUAL + 192);
     uint32_t fd;
     uint32_t result;
     int open_ok;
@@ -448,7 +463,7 @@ static __attribute__((noreturn)) void syscall_file_user_entry(void) {
     syscall_file_set_missing_path(missing_path);
     syscall_file_set_nested_path(nested_path);
 
-    for (uint32_t i = 0; i < sizeof(write_buf); i++) {
+    for (uint32_t i = 0; i < SYSCALL_FILE_BUFFER_SIZE; i++) {
         write_buf[i] = (uint8_t)((i * 5 + 11) & 0xFF);
         read_buf[i] = 0;
     }
@@ -461,8 +476,8 @@ static __attribute__((noreturn)) void syscall_file_user_entry(void) {
         syscall_marker(SYSCALL_MARK_FILE_OPEN_FAIL);
     }
 
-    result = open_ok ? syscall3(SYS_WRITE, fd, (uint32_t)write_buf, sizeof(write_buf)) : SYSCALL_EBADF;
-    write_ok = result == sizeof(write_buf) &&
+    result = open_ok ? syscall3(SYS_WRITE, fd, (uint32_t)write_buf, SYSCALL_FILE_BUFFER_SIZE) : SYSCALL_EBADF;
+    write_ok = result == SYSCALL_FILE_BUFFER_SIZE &&
                syscall3(SYS_CLOSE, fd, 0, 0) == SYSCALL_SUCCESS;
     if (write_ok) {
         syscall_marker(SYSCALL_MARK_FILE_WRITE);
@@ -481,15 +496,15 @@ static __attribute__((noreturn)) void syscall_file_user_entry(void) {
     if (result != 7) {
         data_ok = 0;
     }
-    result = data_ok ? syscall3(SYS_READ, fd, (uint32_t)(read_buf + 7), sizeof(read_buf) - 7) : SYSCALL_EBADF;
-    if (result != sizeof(read_buf) - 7) {
+    result = data_ok ? syscall3(SYS_READ, fd, (uint32_t)(read_buf + 7), SYSCALL_FILE_BUFFER_SIZE - 7) : SYSCALL_EBADF;
+    if (result != SYSCALL_FILE_BUFFER_SIZE - 7) {
         data_ok = 0;
     }
     result = data_ok ? syscall3(SYS_READ, fd, (uint32_t)read_buf, 1) : SYSCALL_EBADF;
     if (result != 0) {
         data_ok = 0;
     }
-    for (uint32_t i = 0; i < sizeof(write_buf); i++) {
+    for (uint32_t i = 0; i < SYSCALL_FILE_BUFFER_SIZE; i++) {
         if (read_buf[i] != write_buf[i]) {
             data_ok = 0;
         }
@@ -504,10 +519,10 @@ static __attribute__((noreturn)) void syscall_file_user_entry(void) {
         syscall_marker(SYSCALL_MARK_FILE_READ_FAIL);
     }
 
-    result = read_ok ? syscall3(SYS_STAT, (uint32_t)path, (uint32_t)&stat, 0) : SYSCALL_EBADF;
+    result = read_ok ? syscall3(SYS_STAT, (uint32_t)path, (uint32_t)stat, 0) : SYSCALL_EBADF;
     stat_ok = result == SYSCALL_SUCCESS &&
-              stat.size == sizeof(write_buf) &&
-              stat.allocated_sectors >= 1;
+              stat->size == SYSCALL_FILE_BUFFER_SIZE &&
+              stat->allocated_sectors >= 1;
     if (stat_ok) {
         syscall_marker(SYSCALL_MARK_FILE_STAT);
     } else {
@@ -535,7 +550,9 @@ static __attribute__((noreturn)) void syscall_file_user_entry(void) {
     while (1) {
     }
 }
+#endif
 
+#if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
 static void map_user_code_span(uint32_t start, uint32_t end) {
     uint32_t first = start & 0xFFFFF000;
     uint32_t last = end & 0xFFFFF000;
@@ -548,6 +565,114 @@ static void map_user_code_span(uint32_t start, uint32_t end) {
 
     for (uint32_t page = first; page <= last + 0x1000; page += 0x1000) {
         paging_map_page(page, page, PAGE_PRESENT | PAGE_USER);
+    }
+}
+#endif
+
+#ifdef ENABLE_PROCESS_SYSCALL_SELFTEST
+#define PROCESS_SYSCALL_STACK_PHYSICAL 0x00950000
+#define PROCESS_EXEC_CODE_OFFSET (ELF_TEST_SEGMENT_OFFSET + 0x20u)
+
+static void process_set_exec_path(char *path) {
+    path[0] = '/';
+    path[1] = 'p';
+    path[2] = 'e';
+    path[3] = 'x';
+    path[4] = 'e';
+    path[5] = 'c';
+    path[6] = '.';
+    path[7] = 'e';
+    path[8] = 'l';
+    path[9] = 'f';
+    path[10] = '\0';
+}
+
+static void process_emit_marker(uint8_t *code, uint32_t *offset, uint8_t marker) {
+    code[(*offset)++] = 0x6A;  // push imm8
+    code[(*offset)++] = SYS_TEST_MARKER;
+    code[(*offset)++] = 0x58;  // pop eax
+    code[(*offset)++] = 0x6A;  // push imm8
+    code[(*offset)++] = marker;
+    code[(*offset)++] = 0x5B;  // pop ebx
+    code[(*offset)++] = 0x31;  // xor ecx, ecx
+    code[(*offset)++] = 0xC9;
+    code[(*offset)++] = 0x31;  // xor edx, edx
+    code[(*offset)++] = 0xD2;
+    code[(*offset)++] = 0xCD;  // int 0x80
+    code[(*offset)++] = 0x80;
+}
+
+static void process_make_exec_image(void) {
+    uint8_t *code = elf_test_image + PROCESS_EXEC_CODE_OFFSET;
+    uint32_t offset = 0;
+
+    elf_make_image(elf_test_image, ELF_TEST_VADDR);
+    process_emit_marker(code, &offset, SYSCALL_MARK_PROCESS_EXEC_ENTERED);
+    process_emit_marker(code, &offset, SYSCALL_MARK_PROCESS_DONE);
+    code[offset++] = 0xEB;  // jmp $
+    code[offset++] = 0xFE;
+
+    elf_put32(elf_test_image, 68, 0x20u + offset);
+    elf_put32(elf_test_image, 72, ELF_TEST_SEGMENT_MEM_SIZE);
+}
+
+static __attribute__((noreturn)) void process_syscall_user_entry(void) {
+    char exec_path[16];
+    uint32_t status = 0;
+    uint32_t result;
+    volatile uint32_t *heap0 = (volatile uint32_t *)PROCESS_HEAP_START;
+    volatile uint32_t *heap1 = (volatile uint32_t *)(PROCESS_HEAP_START + 0x1000);
+    uint32_t brk_target = PROCESS_HEAP_START + 0x1000 + 64;
+
+    result = syscall3(SYS_GETPID, 0, 0, 0);
+    if (result != 0) {
+        syscall_marker(SYSCALL_MARK_PROCESS_GETPID);
+    } else {
+        syscall_marker(SYSCALL_MARK_PROCESS_FAIL);
+    }
+
+    result = syscall3(SYS_BRK, 0, 0, 0);
+    if (result == PROCESS_HEAP_START) {
+        syscall_marker(SYSCALL_MARK_PROCESS_BRK_QUERY);
+    } else {
+        syscall_marker(SYSCALL_MARK_PROCESS_FAIL);
+    }
+
+    result = syscall3(SYS_BRK, brk_target, 0, 0);
+    if (result == brk_target) {
+        syscall_marker(SYSCALL_MARK_PROCESS_BRK_GROW);
+    } else {
+        syscall_marker(SYSCALL_MARK_PROCESS_FAIL);
+    }
+
+    *heap0 = 0xC0DEF00D;
+    *heap1 = 0x1234ABCD;
+    if (*heap0 == 0xC0DEF00D && *heap1 == 0x1234ABCD) {
+        syscall_marker(SYSCALL_MARK_PROCESS_BRK_RW);
+    } else {
+        syscall_marker(SYSCALL_MARK_PROCESS_FAIL);
+    }
+
+    result = syscall3(SYS_BRK, PROCESS_HEAP_START, 0, 0);
+    if (result == PROCESS_HEAP_START) {
+        syscall_marker(SYSCALL_MARK_PROCESS_BRK_SHRINK);
+    } else {
+        syscall_marker(SYSCALL_MARK_PROCESS_FAIL);
+    }
+
+    result = syscall3(SYS_WAIT, (uint32_t)&status, 0, 0);
+    if (result == SYSCALL_ECHILD) {
+        syscall_marker(SYSCALL_MARK_PROCESS_WAIT_NEG);
+    } else {
+        syscall_marker(SYSCALL_MARK_PROCESS_FAIL);
+    }
+
+    process_set_exec_path(exec_path);
+    result = syscall3(SYS_EXEC, (uint32_t)exec_path, 0, 0);
+    (void)result;
+
+    syscall_marker(SYSCALL_MARK_PROCESS_FAIL);
+    while (1) {
     }
 }
 #endif
@@ -570,7 +695,8 @@ void kernel_main(void) {
     frame_reserve_range(0x00900000, 0x00901000);
     frame_reserve_range(0x00910000, 0x00911000);
     frame_reserve_range(0x00930000, 0x00931000);
-    frame_reserve_range(0x00940000, 0x00941000);
+    frame_reserve_range(0x00940000, 0x00942000);
+    frame_reserve_range(0x00950000, 0x00951000);
     paging_init();
     allocator_init();
     if (ramdisk_init() != BLKDEV_SUCCESS) {
@@ -1031,10 +1157,51 @@ void kernel_main(void) {
         paging_map_page(user_stack_page,
                         SYSCALL_FILE_STACK_PHYSICAL,
                         PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+        paging_map_page(SYSCALL_FILE_DATA_VIRTUAL,
+                        SYSCALL_FILE_DATA_PHYSICAL,
+                        PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
 
         enter_user_mode((uint32_t)syscall_file_user_entry, USER_STACK_TOP);
 
         serial_puts("SYSCALL_FILE_FAIL\n");
+        while (1) {
+            asm volatile("cli; hlt");
+        }
+    }
+#endif
+
+#ifdef ENABLE_PROCESS_SYSCALL_SELFTEST
+    {
+        serial_puts("PROCESS_SYSCALL_TEST\n");
+
+        uint32_t user_stack_page = USER_STACK_TOP - 4096;
+
+        vfs_format();
+        vfs_mount();
+        process_make_exec_image();
+        int fixture_ok = elf_write_fixture("/pexec.elf", elf_test_image, sizeof(elf_test_image));
+        if (fixture_ok) {
+            serial_puts("PROCESS_EXEC_FIXTURE_OK\n");
+        }
+
+        process_init();
+        scheduler_init();
+        struct process *user_proc = process_create((uint32_t)process_syscall_user_entry, 1);
+
+        if (fixture_ok && user_proc) {
+            scheduler_set_current(user_proc);
+            map_user_code_span((uint32_t)syscall_marker, (uint32_t)process_syscall_user_entry);
+            paging_map_page(user_stack_page,
+                            PROCESS_SYSCALL_STACK_PHYSICAL,
+                            PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+
+            if (paging_is_user_accessible(user_stack_page)) {
+                serial_puts("PROCESS_USER_READY\n");
+                enter_user_mode((uint32_t)process_syscall_user_entry, USER_STACK_TOP);
+            }
+        }
+
+        serial_puts("PROCESS_FAIL\n");
         while (1) {
             asm volatile("cli; hlt");
         }

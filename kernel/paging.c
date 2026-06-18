@@ -141,6 +141,22 @@ int paging_is_user_writable(uint32_t virtual_addr) {
            (PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE);
 }
 
+uint32_t paging_get_physical_address(uint32_t virtual_addr) {
+    uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
+    uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
+
+    if (!(active_page_directory[dir_index] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    uint32_t *page_table = (uint32_t *)(active_page_directory[dir_index] & 0xFFFFF000);
+    if (!(page_table[table_index] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    return (page_table[table_index] & 0xFFFFF000) | (virtual_addr & 0xFFF);
+}
+
 uint32_t paging_get_current_directory(void) {
     return (uint32_t)active_page_directory;
 }
@@ -170,4 +186,92 @@ uint32_t paging_create_address_space(void) {
 
     directory[0] = ((uint32_t)low_table) | PAGE_PRESENT | PAGE_WRITABLE;
     return (uint32_t)directory;
+}
+
+static void paging_destroy_cloned_directory(uint32_t *directory) {
+    if (!directory) {
+        return;
+    }
+
+    for (int i = 1; i < 1024; i++) {
+        if (!(directory[i] & PAGE_PRESENT)) {
+            continue;
+        }
+
+        uint32_t *table = (uint32_t *)(directory[i] & 0xFFFFF000);
+        for (int j = 0; j < 1024; j++) {
+            if (table[j] & PAGE_PRESENT) {
+                frame_free(table[j] & 0xFFFFF000);
+            }
+        }
+        frame_free((uint32_t)table);
+        directory[i] = 0x02;
+    }
+
+    frame_free((uint32_t)directory);
+}
+
+uint32_t paging_clone_directory(uint32_t src_cr3) {
+    uint32_t *src_dir = (uint32_t *)(src_cr3 & 0xFFFFF000);
+
+    // Allocate new page directory
+    uint32_t *new_dir = allocator_alloc_page_table();
+    if (!new_dir) {
+        return 0;
+    }
+
+    // Copy directory entries
+    for (int i = 0; i < 1024; i++) {
+        if (!(src_dir[i] & PAGE_PRESENT)) {
+            new_dir[i] = 0x02;  // Not present
+            continue;
+        }
+
+        // For kernel pages (first entry), share the same page table
+        if (i == 0) {
+            new_dir[i] = src_dir[i];
+            continue;
+        }
+
+        // For user pages, clone page tables
+        uint32_t *src_table = (uint32_t *)(src_dir[i] & 0xFFFFF000);
+
+        // Allocate new page table
+        uint32_t *new_table = allocator_alloc_page_table();
+        if (!new_table) {
+            paging_destroy_cloned_directory(new_dir);
+            return 0;
+        }
+
+        // Link immediately so partial-failure cleanup can reclaim the table.
+        new_dir[i] = ((uint32_t)new_table & 0xFFFFF000) | (src_dir[i] & 0xFFF);
+
+        // Copy page table entries and physical pages
+        for (int j = 0; j < 1024; j++) {
+            if (!(src_table[j] & PAGE_PRESENT)) {
+                new_table[j] = 0x02;
+                continue;
+            }
+
+            // Allocate new physical page
+            uint32_t new_page_phys = paging_alloc_frame();
+            if (!new_page_phys) {
+                paging_destroy_cloned_directory(new_dir);
+                return 0;
+            }
+
+            // Copy page contents (4096 bytes = 1024 uint32_t)
+            uint32_t *src_page = (uint32_t *)(src_table[j] & 0xFFFFF000);
+            uint32_t *new_page = (uint32_t *)new_page_phys;
+
+            for (int k = 0; k < 1024; k++) {
+                new_page[k] = src_page[k];
+            }
+
+            // Set new page table entry with same flags
+            new_table[j] = (new_page_phys & 0xFFFFF000) | (src_table[j] & 0xFFF);
+        }
+    }
+
+    return (uint32_t)new_dir;
 }

@@ -9,9 +9,11 @@ void paging_unmap_page(uint32_t virtual_addr);
 int paging_is_mapped(uint32_t virtual_addr);
 int paging_is_user_accessible(uint32_t virtual_addr);
 int paging_is_user_writable(uint32_t virtual_addr);
+uint32_t paging_get_physical_address(uint32_t virtual_addr);
 uint32_t paging_get_current_directory(void);
 void paging_switch_directory(uint32_t cr3);
 uint32_t paging_create_address_space(void);
+uint32_t paging_clone_directory(uint32_t src_cr3);
 void paging_map_page_in_directory(uint32_t cr3, uint32_t virtual_addr, uint32_t physical_addr, uint32_t flags);
 uint32_t paging_alloc_frame(void);
 

@@ -80,6 +80,10 @@ struct process *process_create(uint32_t entry_point, int is_user) {
     proc->exited = 0;
     proc->waited = 0;
 
+    // Initialize heap in a high user range below USER_STACK_TOP.
+    proc->heap_start = PROCESS_HEAP_START;
+    proc->heap_end = PROCESS_HEAP_START;
+
     proc->kernel_stack = allocate_stack(KERNEL_STACK_SIZE);
     if (!proc->kernel_stack) {
         proc->state = PROCESS_DEAD;
@@ -144,6 +148,13 @@ struct process *process_create_preemptive(uint32_t entry_point) {
     proc->dynamic_priority = PROCESS_DEFAULT_PRIORITY;
     proc->run_count = 0;
 
+    proc->parent_pid = 0;
+    proc->exit_code = 0;
+    proc->exited = 0;
+    proc->waited = 0;
+    proc->heap_start = PROCESS_HEAP_START;
+    proc->heap_end = PROCESS_HEAP_START;
+
     proc->kernel_stack = allocate_stack(KERNEL_STACK_SIZE);
     if (!proc->kernel_stack) {
         proc->state = PROCESS_DEAD;
@@ -193,6 +204,18 @@ void process_destroy(struct process *proc) {
     proc->ebp = 0;
     proc->eip = 0;
     proc->cr3 = 0;
+    proc->interrupt_frame = 0;
+    proc->priority = 0;
+    proc->dynamic_priority = 0;
+    proc->run_count = 0;
+    proc->parent_pid = 0;
+    proc->exit_code = 0;
+    proc->exited = 0;
+    proc->waited = 0;
+    proc->heap_start = 0;
+    proc->heap_end = 0;
+    proc->user_stack = NULL;
+    proc->next = NULL;
 
     process_count--;
 }
@@ -215,6 +238,24 @@ struct process *process_get_by_pid(uint32_t pid) {
             return &process_table[i];
         }
     }
+    return NULL;
+}
+
+struct process *process_find_exited_child(uint32_t parent_pid) {
+    if (parent_pid == 0) {
+        return NULL;
+    }
+
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (process_table[i].pid != 0 &&
+            process_table[i].parent_pid == parent_pid &&
+            process_table[i].state == PROCESS_ZOMBIE &&
+            process_table[i].exited &&
+            !process_table[i].waited) {
+            return &process_table[i];
+        }
+    }
+
     return NULL;
 }
 

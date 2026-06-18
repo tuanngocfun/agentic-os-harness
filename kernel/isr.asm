@@ -41,15 +41,18 @@ ISR_ERRCODE 14
 
 global isr_stub_32
 isr_stub_32:
-    xor eax, eax
-    mov ax, ds
-    push eax
-    mov ax, es
-    push eax
-    mov ax, fs
-    push eax
-    mov ax, gs
-    push eax
+    sub esp, 4
+    mov word [esp], ds
+    mov word [esp + 2], 0
+    sub esp, 4
+    mov word [esp], es
+    mov word [esp + 2], 0
+    sub esp, 4
+    mov word [esp], fs
+    mov word [esp + 2], 0
+    sub esp, 4
+    mov word [esp], gs
+    mov word [esp + 2], 0
     pusha
 
     mov ax, 0x10
@@ -67,14 +70,19 @@ isr_stub_32:
     out 0x20, al
 
     popa
-    pop eax
+    push eax
+
+    mov ax, [esp + 4]
     mov gs, ax
-    pop eax
+    mov ax, [esp + 8]
     mov fs, ax
-    pop eax
+    mov ax, [esp + 12]
     mov es, ax
-    pop eax
+    mov ax, [esp + 16]
     mov ds, ax
+
+    pop eax
+    add esp, 16
     iretd
 
 global isr_stub_33
@@ -99,13 +107,15 @@ isr_stub_128:
     push esi
     push edi
 
+    lea esi, [ebp + 4]
+    push esi
     push dword [ebp + 8]
     push edx
     push ecx
     push ebx
     push eax
     call syscall_handler
-    add esp, 20
+    add esp, 24
 
     mov [ebp - 4], eax
 

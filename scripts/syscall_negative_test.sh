@@ -14,6 +14,7 @@ EVIDENCE_LOG="$BUILD_DIR/evidence.jsonl"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
 TASK_NAME="${TASK_NAME:-syscall-negative-test}"
 QEMU="${QEMU:-qemu-system-i386}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -35,6 +36,7 @@ echo "=== Testing Syscall Negative Paths ==="
 : > "$QEMU_LOG"
 
 timeout --preserve-status "$TIMEOUT_SECONDS" "$QEMU" \
+  -L "$QEMU_BIOS_DIR" \
   -drive file="$OS_IMG",format=raw \
   -m 512M \
   -serial file:"$SERIAL_LOG" \

@@ -12,6 +12,7 @@ SERIAL_CLEAN="$BUILD_DIR/serial.ramdisk.clean.log"
 QEMU_LOG="$BUILD_DIR/qemu.ramdisk.log"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
 QEMU="${QEMU:-qemu-system-i386}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -46,6 +47,7 @@ mkdir -p "$BUILD_DIR"
 
 set +e
 timeout "$TIMEOUT_SECONDS" "$QEMU" \
+  -L "$QEMU_BIOS_DIR" \
   -drive file="$OS_IMG",format=raw \
   -m 512M \
   -serial file:"$SERIAL_LOG" \
