@@ -24,5 +24,6 @@ struct elf_load_info {
 };
 
 int elf_load_from_vfs(const char *path, struct elf_load_info *out);
+int elf_load_from_vfs_into(uint32_t cr3, const char *path, struct elf_load_info *out);
 
 #endif

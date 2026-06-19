@@ -202,6 +202,10 @@ int vfs_close(int fd) {
     return VFS_SUCCESS;
 }
 
+void vfs_close_all(void) {
+    vfs_clear_open_files();
+}
+
 int vfs_stat(const char *path, struct vfs_stat *out) {
     struct simplefs_file_info info;
     int status;

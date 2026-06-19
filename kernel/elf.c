@@ -183,6 +183,10 @@ static int validate_segment(const struct elf32_program_header *ph, uint32_t file
     return ELF_SUCCESS;
 }
 
+static int ranges_overlap(uint32_t a_start, uint32_t a_end, uint32_t b_start, uint32_t b_end) {
+    return a_start < b_end && b_start < a_end;
+}
+
 static int map_segment_pages(uint32_t vaddr, uint32_t memsz) {
     uint32_t start = align_down(vaddr);
     uint32_t end = align_up(vaddr + memsz);
@@ -223,6 +227,8 @@ static int map_segment_pages(uint32_t vaddr, uint32_t memsz) {
 
 int elf_load_from_vfs(const char *path, struct elf_load_info *out) {
     const struct elf32_header *header;
+    uint32_t segment_page_starts[ELF_MAX_SEGMENTS];
+    uint32_t segment_page_ends[ELF_MAX_SEGMENTS];
     uint32_t file_size;
     uint32_t segment_count = 0;
     uint32_t loaded_bytes = 0;
@@ -257,6 +263,18 @@ int elf_load_from_vfs(const char *path, struct elf_load_info *out) {
             return status;
         }
         if (ph->type == ELF_PT_LOAD) {
+            uint32_t page_start = align_down(ph->vaddr);
+            uint32_t page_end = align_up(ph->vaddr + ph->memsz);
+
+            for (uint32_t j = 0; j < segment_count; j++) {
+                if (ranges_overlap(page_start, page_end,
+                                   segment_page_starts[j], segment_page_ends[j])) {
+                    return ELF_EINVAL;
+                }
+            }
+
+            segment_page_starts[segment_count] = page_start;
+            segment_page_ends[segment_count] = page_end;
             segment_count++;
             if (ph->memsz > ELF_MAX_LOAD_MEMORY_SIZE - load_memory) {
                 return ELF_EINVAL;
@@ -301,4 +319,19 @@ int elf_load_from_vfs(const char *path, struct elf_load_info *out) {
     out->loaded_bytes = loaded_bytes;
     out->segment_count = segment_count;
     return ELF_SUCCESS;
+}
+
+int elf_load_from_vfs_into(uint32_t cr3, const char *path, struct elf_load_info *out) {
+    uint32_t old_cr3;
+    int status;
+
+    if (!cr3) {
+        return ELF_EINVAL;
+    }
+
+    old_cr3 = paging_get_current_directory();
+    paging_switch_directory(cr3);
+    status = elf_load_from_vfs(path, out);
+    paging_switch_directory(old_cr3);
+    return status;
 }

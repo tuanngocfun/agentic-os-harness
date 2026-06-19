@@ -26,9 +26,15 @@ struct simplefs_dir_entry {
     uint32_t reserved[3];
 };
 
+#define SIMPLEFS_MAX_TRACKED_SECTORS 4096u
+
 static struct block_device *simplefs_dev;
 static struct simplefs_superblock simplefs_sb;
 static int simplefs_mounted;
+static uint8_t simplefs_sector_used[SIMPLEFS_MAX_TRACKED_SECTORS / 8];
+
+static int simplefs_read_entry(uint32_t index, struct simplefs_dir_entry *entry);
+static int simplefs_write_superblock(void);
 
 static uint32_t simplefs_min_u32(uint32_t a, uint32_t b) {
     return a < b ? a : b;
@@ -45,24 +51,111 @@ static int simplefs_validate_dev(struct block_device *dev) {
     if (!dev || !dev->read_sector || !dev->write_sector) {
         return VFS_EINVAL;
     }
-    if (dev->sector_size != SECTOR_SIZE || dev->sector_count <= SIMPLEFS_DATA_START) {
+    if (dev->sector_size != SECTOR_SIZE ||
+        dev->sector_count <= SIMPLEFS_DATA_START ||
+        dev->sector_count > SIMPLEFS_MAX_TRACKED_SECTORS) {
         return VFS_EINVAL;
     }
     return VFS_SUCCESS;
 }
 
+static void simplefs_bitmap_clear_all(void) {
+    memset(simplefs_sector_used, 0, sizeof(simplefs_sector_used));
+}
+
+static int simplefs_sector_is_used(uint32_t sector) {
+    return (simplefs_sector_used[sector / 8] >> (sector % 8)) & 1u;
+}
+
+static void simplefs_sector_set(uint32_t sector) {
+    simplefs_sector_used[sector / 8] |= (uint8_t)(1u << (sector % 8));
+}
+
+static void simplefs_sector_clear(uint32_t sector) {
+    simplefs_sector_used[sector / 8] &= (uint8_t)~(1u << (sector % 8));
+}
+
+static int simplefs_mark_run_used(uint32_t start, uint32_t count) {
+    if (count == 0) {
+        return VFS_SUCCESS;
+    }
+    if (start < SIMPLEFS_DATA_START ||
+        start >= simplefs_sb.total_sectors ||
+        count > simplefs_sb.total_sectors - start) {
+        return VFS_EIO;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t sector = start + i;
+        if (simplefs_sector_is_used(sector)) {
+            return VFS_EIO;
+        }
+        simplefs_sector_set(sector);
+    }
+    return VFS_SUCCESS;
+}
+
+static void simplefs_mark_run_free(uint32_t start, uint32_t count) {
+    if (count == 0 ||
+        start < SIMPLEFS_DATA_START ||
+        start >= simplefs_sb.total_sectors ||
+        count > simplefs_sb.total_sectors - start) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        simplefs_sector_clear(start + i);
+    }
+}
+
+static int simplefs_rebuild_allocation_map(void) {
+    struct simplefs_dir_entry entry;
+    uint32_t high_water = SIMPLEFS_DATA_START;
+
+    simplefs_bitmap_clear_all();
+    for (uint32_t i = 0; i < SIMPLEFS_DATA_START; i++) {
+        simplefs_sector_set(i);
+    }
+
+    for (uint32_t i = 0; i < SIMPLEFS_MAX_FILES; i++) {
+        int status = simplefs_read_entry(i, &entry);
+        if (status != VFS_SUCCESS) {
+            return status;
+        }
+        if (!entry.used || entry.allocated_sectors == 0) {
+            continue;
+        }
+        if (entry.start_sector < SIMPLEFS_DATA_START ||
+            entry.start_sector >= simplefs_sb.total_sectors ||
+            entry.allocated_sectors > simplefs_sb.total_sectors - entry.start_sector) {
+            return VFS_EIO;
+        }
+        status = simplefs_mark_run_used(entry.start_sector, entry.allocated_sectors);
+        if (status != VFS_SUCCESS) {
+            return status;
+        }
+        if (entry.start_sector + entry.allocated_sectors > high_water) {
+            high_water = entry.start_sector + entry.allocated_sectors;
+        }
+    }
+
+    simplefs_sb.next_free_sector = high_water;
+    return simplefs_write_superblock();
+}
+
 static int simplefs_normalize_path(const char *path, char *name_out) {
-    const char *name = path;
+    const char *name;
     uint32_t len = 0;
 
     if (!path || !name_out) {
         return VFS_EINVAL;
     }
 
-    if (path[0] == '/') {
-        name = path + 1;
+    if (path[0] != '/') {
+        return VFS_EINVAL;
     }
 
+    name = path + 1;
     if (name[0] == '\0') {
         return VFS_EINVAL;
     }
@@ -76,6 +169,11 @@ static int simplefs_normalize_path(const char *path, char *name_out) {
         }
         name_out[len] = name[len];
         len++;
+    }
+
+    if ((len == 1 && name_out[0] == '.') ||
+        (len == 2 && name_out[0] == '.' && name_out[1] == '.')) {
+        return VFS_EINVAL;
     }
 
     name_out[len] = '\0';
@@ -189,14 +287,35 @@ static int simplefs_allocate_sectors(uint32_t count, uint32_t *start_out) {
         return VFS_SUCCESS;
     }
 
-    if (simplefs_sb.next_free_sector >= simplefs_sb.total_sectors ||
-        count > (simplefs_sb.total_sectors - simplefs_sb.next_free_sector)) {
+    if (count > simplefs_sb.total_sectors - SIMPLEFS_DATA_START) {
         return VFS_ENOSPC;
     }
 
-    *start_out = simplefs_sb.next_free_sector;
-    simplefs_sb.next_free_sector += count;
-    return simplefs_write_superblock();
+    for (uint32_t start = SIMPLEFS_DATA_START;
+         start <= simplefs_sb.total_sectors - count;
+         start++) {
+        uint32_t run = 0;
+
+        while (run < count && !simplefs_sector_is_used(start + run)) {
+            run++;
+        }
+
+        if (run == count) {
+            int status = simplefs_mark_run_used(start, count);
+            if (status != VFS_SUCCESS) {
+                return status;
+            }
+            *start_out = start;
+            if (start + count > simplefs_sb.next_free_sector) {
+                simplefs_sb.next_free_sector = start + count;
+            }
+            return simplefs_write_superblock();
+        }
+
+        start += run;
+    }
+
+    return VFS_ENOSPC;
 }
 
 static int simplefs_zero_run(uint32_t start_sector, uint32_t count) {
@@ -271,6 +390,7 @@ static void simplefs_copy_name(char *dest, const char *src) {
 
 int simplefs_format(struct block_device *dev) {
     uint8_t sector[SECTOR_SIZE];
+    int status;
 
     if (simplefs_validate_dev(dev) != VFS_SUCCESS) {
         return VFS_EINVAL;
@@ -299,6 +419,12 @@ int simplefs_format(struct block_device *dev) {
         if (dev->write_sector(dev, SIMPLEFS_DIR_START + i, sector) != BLKDEV_SUCCESS) {
             return VFS_EIO;
         }
+    }
+
+    status = simplefs_rebuild_allocation_map();
+    if (status != VFS_SUCCESS) {
+        simplefs_mounted = 0;
+        return status;
     }
 
     simplefs_mounted = 1;
@@ -331,6 +457,12 @@ int simplefs_mount(struct block_device *dev) {
     }
 
     simplefs_dev = dev;
+    int status = simplefs_rebuild_allocation_map();
+    if (status != VFS_SUCCESS) {
+        simplefs_mounted = 0;
+        return status;
+    }
+
     simplefs_mounted = 1;
     return VFS_SUCCESS;
 }
@@ -372,6 +504,7 @@ int simplefs_open(const char *path, uint32_t flags, struct simplefs_file_info *o
     } else if (status != VFS_SUCCESS) {
         return status;
     } else if (flags & VFS_O_TRUNC) {
+        simplefs_mark_run_free(entry.start_sector, entry.allocated_sectors);
         entry.start_sector = 0;
         entry.size_bytes = 0;
         entry.allocated_sectors = 0;
@@ -448,6 +581,8 @@ int simplefs_write(const char *path, uint32_t offset, const void *buffer, uint32
     uint32_t done = 0;
     uint32_t new_size;
     uint32_t required_sectors;
+    uint32_t old_start_sector;
+    uint32_t old_allocated_sectors;
     int status;
 
     if (!simplefs_mounted) {
@@ -476,6 +611,8 @@ int simplefs_write(const char *path, uint32_t offset, const void *buffer, uint32
         return status;
     }
 
+    old_start_sector = entry.start_sector;
+    old_allocated_sectors = entry.allocated_sectors;
     new_size = offset + count;
     if (new_size < entry.size_bytes) {
         new_size = entry.size_bytes;
@@ -512,6 +649,10 @@ int simplefs_write(const char *path, uint32_t offset, const void *buffer, uint32
     status = simplefs_write_entry(index, &entry);
     if (status != VFS_SUCCESS) {
         return status;
+    }
+
+    if (old_allocated_sectors > 0 && entry.start_sector != old_start_sector) {
+        simplefs_mark_run_free(old_start_sector, old_allocated_sectors);
     }
 
     return (int)done;
