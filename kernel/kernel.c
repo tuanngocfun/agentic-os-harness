@@ -156,10 +156,11 @@ static uint8_t vfs_write_buf[SECTOR_SIZE * 2 + 37];
 static uint8_t vfs_read_buf[SECTOR_SIZE * 2 + 37];
 #endif
 
-#if defined(ENABLE_ELF_LOADER_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
+#if defined(ENABLE_ELF_LOADER_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
+    defined(ENABLE_REDTEAM_SELFTEST)
 #define ELF_TEST_VADDR 0x40000000u
 #define ELF_TEST_ENTRY (ELF_TEST_VADDR + 0x20u)
-#define ELF_TEST_FILE_SIZE 256u
+#define ELF_TEST_FILE_SIZE 512u
 #define ELF_TEST_SEGMENT_OFFSET 128u
 #define ELF_TEST_SEGMENT_FILE_SIZE 9u
 #define ELF_TEST_SEGMENT_MEM_SIZE 64u
@@ -173,7 +174,8 @@ static uint8_t elf_trunc_image[32];
 static uint8_t elf_kernel_addr_image[ELF_TEST_FILE_SIZE];
 #endif
 
-#if defined(ENABLE_ELF_LOADER_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
+#if defined(ENABLE_ELF_LOADER_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
+    defined(ENABLE_REDTEAM_SELFTEST)
 static void elf_put16(uint8_t *buf, uint32_t offset, uint16_t value) {
     buf[offset] = (uint8_t)(value & 0xFF);
     buf[offset + 1] = (uint8_t)((value >> 8) & 0xFF);
@@ -278,7 +280,8 @@ static void address_space_dummy_task(void) {
 #endif
 
 #if defined(ENABLE_USERMODE_SELFTEST) || defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || \
-    defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
+    defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
+    defined(ENABLE_REDTEAM_SELFTEST)
 extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
 #endif
 
@@ -306,13 +309,13 @@ static __attribute__((noreturn)) void usermode_selftest_entry(void) {
 #endif
 
 #if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || \
-    defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
+    defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
 static void syscall_marker(uint32_t marker) {
     uint32_t ignored = SYS_TEST_MARKER;
     asm volatile(
         "int $0x80"
         : "+a"(ignored)
-        : "b"(marker), "c"(0), "d"(0)
+        : "b"(marker), "c"(SYSCALL_TEST_MARKER_TOKEN), "d"(0)
         : "memory", "cc"
     );
     (void)ignored;
@@ -390,7 +393,8 @@ static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
 }
 #endif
 
-#if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
+#if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
+    defined(ENABLE_REDTEAM_SELFTEST)
 static uint32_t syscall3(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     asm volatile(
         "int $0x80"
@@ -552,7 +556,8 @@ static __attribute__((noreturn)) void syscall_file_user_entry(void) {
 }
 #endif
 
-#if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST)
+#if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
+    defined(ENABLE_REDTEAM_SELFTEST)
 static void map_user_code_span(uint32_t start, uint32_t end) {
     uint32_t first = start & 0xFFFFF000;
     uint32_t last = end & 0xFFFFF000;
@@ -569,9 +574,28 @@ static void map_user_code_span(uint32_t start, uint32_t end) {
 }
 #endif
 
+#if defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
+#define PROCESS_EXEC_CODE_OFFSET (ELF_TEST_SEGMENT_OFFSET + 0x20u)
+
+static void process_emit_marker(uint8_t *code, uint32_t *offset, uint8_t marker) {
+    code[(*offset)++] = 0x6A;  // push imm8
+    code[(*offset)++] = SYS_TEST_MARKER;
+    code[(*offset)++] = 0x58;  // pop eax
+    code[(*offset)++] = 0x6A;  // push imm8
+    code[(*offset)++] = marker;
+    code[(*offset)++] = 0x5B;  // pop ebx
+    code[(*offset)++] = 0xB9;  // mov ecx, imm32
+    elf_put32(code, *offset, SYSCALL_TEST_MARKER_TOKEN);
+    *offset += 4;
+    code[(*offset)++] = 0x31;  // xor edx, edx
+    code[(*offset)++] = 0xD2;
+    code[(*offset)++] = 0xCD;  // int 0x80
+    code[(*offset)++] = 0x80;
+}
+#endif
+
 #ifdef ENABLE_PROCESS_SYSCALL_SELFTEST
 #define PROCESS_SYSCALL_STACK_PHYSICAL 0x00950000
-#define PROCESS_EXEC_CODE_OFFSET (ELF_TEST_SEGMENT_OFFSET + 0x20u)
 
 static void process_set_exec_path(char *path) {
     path[0] = '/';
@@ -585,21 +609,6 @@ static void process_set_exec_path(char *path) {
     path[8] = 'l';
     path[9] = 'f';
     path[10] = '\0';
-}
-
-static void process_emit_marker(uint8_t *code, uint32_t *offset, uint8_t marker) {
-    code[(*offset)++] = 0x6A;  // push imm8
-    code[(*offset)++] = SYS_TEST_MARKER;
-    code[(*offset)++] = 0x58;  // pop eax
-    code[(*offset)++] = 0x6A;  // push imm8
-    code[(*offset)++] = marker;
-    code[(*offset)++] = 0x5B;  // pop ebx
-    code[(*offset)++] = 0x31;  // xor ecx, ecx
-    code[(*offset)++] = 0xC9;
-    code[(*offset)++] = 0x31;  // xor edx, edx
-    code[(*offset)++] = 0xD2;
-    code[(*offset)++] = 0xCD;  // int 0x80
-    code[(*offset)++] = 0x80;
 }
 
 static void process_make_exec_image(void) {
@@ -677,6 +686,340 @@ static __attribute__((noreturn)) void process_syscall_user_entry(void) {
 }
 #endif
 
+#ifdef ENABLE_REDTEAM_SELFTEST
+#define REDTEAM_STACK_PHYSICAL 0x00960000
+#define REDTEAM_DOS_WRITE_SIZE (SECTOR_SIZE * 32u)
+#define REDTEAM_HEAP_SENTINEL 0xBADF00Du
+#define REDTEAM_EXEC_FD_PROBE_VADDR (ELF_TEST_VADDR + 0xB0u)
+#define REDTEAM_EXEC_FAILURE_PATH_VADDR 0x50000000u
+#define REDTEAM_EXEC_FAILURE_ATTEMPTS 8u
+#define REDTEAM_PROCESS_DESTROY_VADDR 0x51000000u
+
+static uint8_t redteam_dos_buf[REDTEAM_DOS_WRITE_SIZE];
+
+static __attribute__((noreturn)) void redteam_user_entry(void);
+
+static int redteam_simplefs_dos_blocked_probe(void) {
+    const char *path = "/red-dos";
+    struct vfs_stat stat;
+
+    for (uint32_t i = 0; i < REDTEAM_DOS_WRITE_SIZE; i++) {
+        redteam_dos_buf[i] = (uint8_t)(i & 0xFF);
+    }
+
+    for (uint32_t round = 0; round < 256; round++) {
+        int fd = vfs_open(path, VFS_O_CREAT | VFS_O_RDWR | VFS_O_TRUNC);
+        if (fd < 0) {
+            return 0;
+        }
+
+        int status = vfs_write(fd, redteam_dos_buf, REDTEAM_DOS_WRITE_SIZE);
+        vfs_close(fd);
+
+        if (status == VFS_ENOSPC) {
+            return 0;
+        }
+        if (status != (int)REDTEAM_DOS_WRITE_SIZE) {
+            return 0;
+        }
+    }
+
+    return vfs_stat(path, &stat) == VFS_SUCCESS &&
+           stat.size == REDTEAM_DOS_WRITE_SIZE &&
+           stat.allocated_sectors == (REDTEAM_DOS_WRITE_SIZE / SECTOR_SIZE);
+}
+
+static int redteam_vfs_namespace_blocked_probe(void) {
+    struct vfs_stat stat;
+
+    if (vfs_open("relative", VFS_O_CREAT | VFS_O_RDWR) != VFS_EINVAL) {
+        return 0;
+    }
+    if (vfs_open("/dir/file", VFS_O_CREAT | VFS_O_RDWR) != VFS_EINVAL) {
+        return 0;
+    }
+    if (vfs_open("/.", VFS_O_CREAT | VFS_O_RDWR) != VFS_EINVAL) {
+        return 0;
+    }
+    if (vfs_open("/..", VFS_O_CREAT | VFS_O_RDWR) != VFS_EINVAL) {
+        return 0;
+    }
+    if (vfs_stat("relative", &stat) != VFS_EINVAL) {
+        return 0;
+    }
+    if (vfs_stat("/dir/file", &stat) != VFS_EINVAL) {
+        return 0;
+    }
+
+    return 1;
+}
+
+static int redteam_elf_overlap_blocked_probe(void) {
+    struct elf_load_info info;
+    const char *path = "/overlap.elf";
+    uint32_t overlap_vaddr = ELF_TEST_VADDR + 0x20u;
+
+    elf_make_image(elf_test_image, ELF_TEST_VADDR);
+    elf_put16(elf_test_image, 44, 2);
+
+    elf_put32(elf_test_image, 84, 1);
+    elf_put32(elf_test_image, 88, ELF_TEST_SEGMENT_OFFSET + 64u);
+    elf_put32(elf_test_image, 92, overlap_vaddr);
+    elf_put32(elf_test_image, 96, overlap_vaddr);
+    elf_put32(elf_test_image, 100, 4u);
+    elf_put32(elf_test_image, 104, 64u);
+    elf_put32(elf_test_image, 108, 5u);
+    elf_put32(elf_test_image, 112, 1u);
+
+    elf_test_image[ELF_TEST_SEGMENT_OFFSET + 64u] = 'O';
+    elf_test_image[ELF_TEST_SEGMENT_OFFSET + 65u] = 'V';
+    elf_test_image[ELF_TEST_SEGMENT_OFFSET + 66u] = 'R';
+    elf_test_image[ELF_TEST_SEGMENT_OFFSET + 67u] = 'L';
+
+    if (!elf_write_fixture(path, elf_test_image, sizeof(elf_test_image))) {
+        return 0;
+    }
+
+    if (elf_load_from_vfs(path, &info) != ELF_EINVAL) {
+        return 0;
+    }
+
+    return !paging_is_mapped(ELF_TEST_VADDR);
+}
+
+static int redteam_exec_failure_cleanup_blocked_probe(void) {
+    const char *path = "/badexec.elf";
+    char *user_path = (char *)REDTEAM_EXEC_FAILURE_PATH_VADDR;
+    uint32_t path_phys = frame_alloc();
+    uint32_t frame_before;
+    uint32_t frame_after;
+    uint32_t fake_frame[4] = {0, 0, 0, 0};
+
+    if (!path_phys) {
+        return 0;
+    }
+
+    paging_map_page(REDTEAM_EXEC_FAILURE_PATH_VADDR,
+                    path_phys,
+                    PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+    if (!paging_is_user_writable(REDTEAM_EXEC_FAILURE_PATH_VADDR)) {
+        frame_free(path_phys);
+        return 0;
+    }
+
+    elf_make_image(elf_test_image, ELF_TEST_VADDR);
+    elf_test_image[0] = 'B';
+    if (!elf_write_fixture(path, elf_test_image, sizeof(elf_test_image))) {
+        paging_unmap_page(REDTEAM_EXEC_FAILURE_PATH_VADDR);
+        frame_free(path_phys);
+        return 0;
+    }
+
+    memcpy(user_path, path, strlen(path) + 1);
+
+    process_init();
+    scheduler_init();
+    struct process *proc = process_create((uint32_t)redteam_user_entry, 1);
+    if (!proc) {
+        paging_unmap_page(REDTEAM_EXEC_FAILURE_PATH_VADDR);
+        frame_free(path_phys);
+        return 0;
+    }
+    scheduler_set_current(proc);
+
+    frame_before = frame_get_free_count();
+    for (uint32_t i = 0; i < REDTEAM_EXEC_FAILURE_ATTEMPTS; i++) {
+        uint32_t result = syscall_handler(SYS_EXEC,
+                                          REDTEAM_EXEC_FAILURE_PATH_VADDR,
+                                          0,
+                                          0,
+                                          0x1B,
+                                          (uint32_t)fake_frame);
+        if (result != SYSCALL_EINVAL) {
+            paging_unmap_page(REDTEAM_EXEC_FAILURE_PATH_VADDR);
+            frame_free(path_phys);
+            return 0;
+        }
+    }
+    frame_after = frame_get_free_count();
+
+    paging_unmap_page(REDTEAM_EXEC_FAILURE_PATH_VADDR);
+    frame_free(path_phys);
+    return frame_before == frame_after;
+}
+
+static int redteam_process_destroy_cleanup_blocked_probe(void) {
+    uint32_t frame_before = frame_get_free_count();
+    uint32_t old_cr3 = paging_get_current_directory();
+
+    process_init();
+    struct process *proc = process_create((uint32_t)redteam_user_entry, 1);
+    if (!proc) {
+        return 0;
+    }
+
+    uint32_t proc_cr3 = paging_create_address_space();
+    if (!proc_cr3) {
+        process_destroy(proc);
+        return 0;
+    }
+
+    uint32_t data_phys = frame_alloc();
+    if (!data_phys) {
+        paging_destroy_address_space(proc_cr3);
+        process_destroy(proc);
+        return 0;
+    }
+
+    paging_map_page_in_directory(proc_cr3,
+                                 REDTEAM_PROCESS_DESTROY_VADDR,
+                                 data_phys,
+                                 PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+    paging_switch_directory(proc_cr3);
+    int mapped = paging_is_user_writable(REDTEAM_PROCESS_DESTROY_VADDR);
+    paging_switch_directory(old_cr3);
+
+    if (!mapped) {
+        frame_free(data_phys);
+        paging_destroy_address_space(proc_cr3);
+        process_destroy(proc);
+        return 0;
+    }
+
+    process_set_address_space(proc, proc_cr3);
+    process_destroy(proc);
+    return frame_get_free_count() == frame_before;
+}
+
+static void redteam_set_exec_path(char *path) {
+    path[0] = '/';
+    path[1] = 'r';
+    path[2] = 'e';
+    path[3] = 'd';
+    path[4] = 'e';
+    path[5] = 'x';
+    path[6] = 'e';
+    path[7] = 'c';
+    path[8] = '.';
+    path[9] = 'e';
+    path[10] = 'l';
+    path[11] = 'f';
+    path[12] = '\0';
+}
+
+static void redteam_make_exec_image(void) {
+    uint8_t *code = elf_test_image + PROCESS_EXEC_CODE_OFFSET;
+    uint32_t offset = 0;
+    uint32_t heap_jne_patch;
+    uint32_t fd_jne_patch;
+
+    elf_make_image(elf_test_image, ELF_TEST_VADDR);
+    elf_test_image[ELF_TEST_SEGMENT_OFFSET + 0xB0u] = 'L';
+
+    code[offset++] = 0x6A;  // push imm8
+    code[offset++] = SYS_WRITE;
+    code[offset++] = 0x58;  // pop eax
+    code[offset++] = 0x6A;  // push imm8
+    code[offset++] = 99u;
+    code[offset++] = 0x5B;  // pop ebx
+    code[offset++] = 0xB9;  // mov ecx, imm32
+    elf_put32(code, offset, PROCESS_HEAP_START);
+    offset += 4;
+    code[offset++] = 0x6A;  // push imm8
+    code[offset++] = 4u;
+    code[offset++] = 0x5A;  // pop edx
+    code[offset++] = 0xCD;  // int 0x80
+    code[offset++] = 0x80;
+    code[offset++] = 0x3D;  // cmp eax, imm32
+    elf_put32(code, offset, SYSCALL_EFAULT);
+    offset += 4;
+    code[offset++] = 0x75;  // jne fail
+    heap_jne_patch = offset++;
+
+    process_emit_marker(code, &offset, SYSCALL_MARK_RED_EXEC_BLOCKED);
+
+    code[offset++] = 0x6A;  // push imm8
+    code[offset++] = SYS_WRITE;
+    code[offset++] = 0x58;  // pop eax
+    code[offset++] = 0x31;  // xor ebx, ebx
+    code[offset++] = 0xDB;
+    code[offset++] = 0xB9;  // mov ecx, imm32
+    elf_put32(code, offset, REDTEAM_EXEC_FD_PROBE_VADDR);
+    offset += 4;
+    code[offset++] = 0x6A;  // push imm8
+    code[offset++] = 1u;
+    code[offset++] = 0x5A;  // pop edx
+    code[offset++] = 0xCD;  // int 0x80
+    code[offset++] = 0x80;
+    code[offset++] = 0x3D;  // cmp eax, imm32
+    elf_put32(code, offset, SYSCALL_EBADF);
+    offset += 4;
+    code[offset++] = 0x75;  // jne fail
+    fd_jne_patch = offset++;
+
+    process_emit_marker(code, &offset, SYSCALL_MARK_RED_EXEC_FD_BLOCKED);
+    process_emit_marker(code, &offset, SYSCALL_MARK_RED_DEFENSES_DONE);
+    code[offset++] = 0xEB;  // jmp $
+    code[offset++] = 0xFE;
+
+    uint32_t fail_offset = offset;
+    process_emit_marker(code, &offset, SYSCALL_MARK_RED_FAIL);
+    code[offset++] = 0xEB;  // jmp $
+    code[offset++] = 0xFE;
+
+    code[heap_jne_patch] = (uint8_t)(fail_offset - (heap_jne_patch + 1));
+    code[fd_jne_patch] = (uint8_t)(fail_offset - (fd_jne_patch + 1));
+    elf_put32(elf_test_image, 68, 0x20u + offset);
+    elf_put32(elf_test_image, 72, 192u);
+}
+
+static __attribute__((noreturn)) void redteam_user_entry(void) {
+    char exec_path[16];
+    char fd_path[16];
+    char fd_byte = 'F';
+    uint32_t result;
+    volatile uint32_t *heap = (volatile uint32_t *)PROCESS_HEAP_START;
+
+    result = syscall3(SYS_TEST_MARKER, SYSCALL_MARK_FILE_DONE, 0, 0);
+    if (result == SYSCALL_EPERM) {
+        syscall_marker(SYSCALL_MARK_RED_MARKER_BLOCKED);
+    } else {
+        syscall_marker(SYSCALL_MARK_RED_FAIL);
+    }
+
+    result = syscall3(SYS_BRK, PROCESS_HEAP_START + 4, 0, 0);
+    if (result != PROCESS_HEAP_START + 4) {
+        syscall_marker(SYSCALL_MARK_RED_FAIL);
+    }
+
+    *heap = REDTEAM_HEAP_SENTINEL;
+    fd_path[0] = '/';
+    fd_path[1] = 'f';
+    fd_path[2] = 'd';
+    fd_path[3] = 'l';
+    fd_path[4] = 'e';
+    fd_path[5] = 'a';
+    fd_path[6] = 'k';
+    fd_path[7] = '\0';
+    result = syscall3(SYS_OPEN, (uint32_t)fd_path, SYS_O_CREAT | SYS_O_RDWR | SYS_O_TRUNC, 0);
+    if (result != 0) {
+        syscall_marker(SYSCALL_MARK_RED_FAIL);
+    }
+    result = syscall3(SYS_WRITE, 0, (uint32_t)&fd_byte, 1);
+    if (result != 1) {
+        syscall_marker(SYSCALL_MARK_RED_FAIL);
+    }
+
+    redteam_set_exec_path(exec_path);
+    result = syscall3(SYS_EXEC, (uint32_t)exec_path, 0, 0);
+    (void)result;
+
+    syscall_marker(SYSCALL_MARK_RED_FAIL);
+    while (1) {
+    }
+}
+#endif
+
 void kernel_main(void) {
     serial_init();
     serial_puts("KERNEL_INIT_OK\n");
@@ -697,6 +1040,7 @@ void kernel_main(void) {
     frame_reserve_range(0x00930000, 0x00931000);
     frame_reserve_range(0x00940000, 0x00942000);
     frame_reserve_range(0x00950000, 0x00951000);
+    frame_reserve_range(0x00960000, 0x00961000);
     paging_init();
     allocator_init();
     if (ramdisk_init() != BLKDEV_SUCCESS) {
@@ -1202,6 +1546,82 @@ void kernel_main(void) {
         }
 
         serial_puts("PROCESS_FAIL\n");
+        while (1) {
+            asm volatile("cli; hlt");
+        }
+    }
+#endif
+
+#ifdef ENABLE_REDTEAM_SELFTEST
+    {
+        serial_puts("RED_TEAM_TEST\n");
+
+        vfs_format();
+        vfs_mount();
+        if (redteam_simplefs_dos_blocked_probe()) {
+            serial_puts("RED_SIMPLEFS_DOS_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+        if (redteam_vfs_namespace_blocked_probe()) {
+            serial_puts("RED_VFS_NAMESPACE_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+        if (redteam_elf_overlap_blocked_probe()) {
+            serial_puts("RED_ELF_OVERLAP_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+        if (redteam_exec_failure_cleanup_blocked_probe()) {
+            serial_puts("RED_EXEC_FAILURE_CLEANUP_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+        if (redteam_process_destroy_cleanup_blocked_probe()) {
+            serial_puts("RED_PROCESS_DESTROY_CLEANUP_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+
+        vfs_format();
+        vfs_mount();
+        redteam_make_exec_image();
+        int fixture_ok = elf_write_fixture("/redexec.elf", elf_test_image, sizeof(elf_test_image));
+
+        process_init();
+        scheduler_init();
+        struct process *user_proc = process_create((uint32_t)redteam_user_entry, 1);
+        uint32_t user_stack_page = USER_STACK_TOP - 4096;
+
+        if (fixture_ok && user_proc) {
+            scheduler_set_current(user_proc);
+            map_user_code_span((uint32_t)syscall_marker, (uint32_t)redteam_user_entry);
+            paging_map_page(user_stack_page,
+                            REDTEAM_STACK_PHYSICAL,
+                            PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+
+            if (paging_is_user_accessible(user_stack_page)) {
+                enter_user_mode((uint32_t)redteam_user_entry, USER_STACK_TOP);
+            }
+        }
+
+        serial_puts("RED_TEAM_FAIL\n");
         while (1) {
             asm volatile("cli; hlt");
         }

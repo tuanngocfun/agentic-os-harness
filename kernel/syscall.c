@@ -9,6 +9,7 @@
 #include "scheduler.h"
 #include "elf.h"
 #include "frame.h"
+#include "string.h"
 #include <stdint.h>
 
 void syscall_init(void) {
@@ -295,6 +296,9 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
             if (!is_ring3(caller_cs)) {
                 return SYSCALL_EPERM;
             }
+            if (arg2 != SYSCALL_TEST_MARKER_TOKEN) {
+                return SYSCALL_EPERM;
+            }
             switch (arg1) {
                 case SYSCALL_MARK_INVALID_NUM:
                     serial_puts("SYSCALL_INVALID_NUM_OK\n");
@@ -374,6 +378,32 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
                 case SYSCALL_MARK_PROCESS_FAIL:
                     serial_puts("PROCESS_FAIL\n");
                     break;
+#ifdef ENABLE_REDTEAM_SELFTEST
+                case SYSCALL_MARK_RED_MARKER_BLOCKED:
+                    serial_puts("RED_MARKER_FORGERY_BLOCKED\n");
+                    break;
+                case SYSCALL_MARK_RED_EXEC_BLOCKED:
+                    serial_puts("RED_EXEC_RESIDUAL_MAPPING_BLOCKED\n");
+                    break;
+                case SYSCALL_MARK_RED_EXEC_FD_BLOCKED:
+                    serial_puts("RED_EXEC_FD_LEAK_BLOCKED\n");
+                    break;
+                case SYSCALL_MARK_RED_ELF_OVERLAP_BLOCKED:
+                    serial_puts("RED_ELF_OVERLAP_BLOCKED\n");
+                    break;
+                case SYSCALL_MARK_RED_EXEC_FAILURE_CLEANUP_BLOCKED:
+                    serial_puts("RED_EXEC_FAILURE_CLEANUP_BLOCKED\n");
+                    break;
+                case SYSCALL_MARK_RED_PROCESS_DESTROY_CLEANUP_BLOCKED:
+                    serial_puts("RED_PROCESS_DESTROY_CLEANUP_BLOCKED\n");
+                    break;
+                case SYSCALL_MARK_RED_DEFENSES_DONE:
+                    serial_puts("RED_DEFENSES_OK\n");
+                    break;
+                case SYSCALL_MARK_RED_FAIL:
+                    serial_puts("RED_TEAM_FAIL\n");
+                    break;
+#endif
                 default:
                     return SYSCALL_EINVAL;
             }
@@ -474,6 +504,11 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
                 return SYSCALL_EINVAL;
             }
 
+            struct process *current = process_get_current();
+            if (!current) {
+                return SYSCALL_EINVAL;
+            }
+
             if (!is_user_pointer_valid(arg1, 1)) {
                 return SYSCALL_EFAULT;
             }
@@ -483,22 +518,61 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
                 return SYSCALL_EFAULT;
             }
 
-            // Load ELF from VFS
+            uint32_t new_cr3 = paging_create_address_space();
+            if (!new_cr3) {
+                return SYSCALL_ENOMEM;
+            }
+
             struct elf_load_info info;
-            int ret = elf_load_from_vfs(kernel_path, &info);
+            int ret = elf_load_from_vfs_into(new_cr3, kernel_path, &info);
             if (ret != ELF_SUCCESS) {
-                // Return appropriate error
+                paging_destroy_address_space(new_cr3);
                 if (ret == ELF_ENOENT) return SYSCALL_ENOENT;
                 if (ret == ELF_EINVAL) return SYSCALL_EINVAL;
+                if (ret == ELF_ENOSPC) return SYSCALL_ENOSPC;
                 return SYSCALL_EIO;
             }
+
+            uint32_t stack_page = USER_STACK_TOP - 0x1000;
+            uint32_t stack_phys = frame_alloc();
+            if (!stack_phys) {
+                paging_destroy_address_space(new_cr3);
+                return SYSCALL_ENOMEM;
+            }
+            paging_map_page_in_directory(new_cr3,
+                                         stack_page,
+                                         stack_phys,
+                                         PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+
+            uint32_t old_cr3 = paging_get_current_directory();
+            uint32_t old_process_cr3 = current->cr3;
+            paging_switch_directory(new_cr3);
+            if (!paging_is_user_writable(stack_page)) {
+                uint32_t mapped_stack_phys = paging_get_physical_address(stack_page) & 0xFFFFF000;
+                paging_switch_directory(old_cr3);
+                if (mapped_stack_phys != stack_phys) {
+                    frame_free(stack_phys);
+                }
+                paging_destroy_address_space(new_cr3);
+                return SYSCALL_EIO;
+            }
+            memset((void *)stack_page, 0, 0x1000);
+            paging_switch_directory(old_cr3);
 
             serial_puts("PROCESS_EXEC_LOAD_OK\n");
             serial_puts("EXEC loaded entry=");
             serial_put_uint32(info.entry);
             serial_puts("\n");
 
+            vfs_close_all();
+            current->cr3 = new_cr3;
+            current->heap_start = PROCESS_HEAP_START;
+            current->heap_end = PROCESS_HEAP_START;
+            paging_switch_directory(new_cr3);
+            paging_destroy_address_space(old_process_cr3);
+
             *((uint32_t *)frame_ptr) = info.entry;
+            ((uint32_t *)frame_ptr)[3] = USER_STACK_TOP;
             return SYSCALL_SUCCESS;
         }
 

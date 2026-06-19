@@ -193,6 +193,8 @@ void process_destroy(struct process *proc) {
         return;
     }
 
+    paging_destroy_address_space(proc->cr3);
+
     // Free the kernel stack
     free_stack(proc->kernel_stack);
 

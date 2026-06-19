@@ -178,14 +178,66 @@ uint32_t paging_create_address_space(void) {
     if (!directory) return 0;
 
     uint32_t *low_table = allocator_alloc_page_table();
-    if (!low_table) return 0;
+    if (!low_table) {
+        frame_free((uint32_t)directory);
+        return 0;
+    }
 
     for (int i = 0; i < 1024; i++) {
         low_table[i] = (i * PAGE_SIZE) | PAGE_PRESENT | PAGE_WRITABLE;
     }
 
     directory[0] = ((uint32_t)low_table) | PAGE_PRESENT | PAGE_WRITABLE;
+
+    // Share supervisor-only runtime mappings such as the ramdisk and kernel
+    // data/stack tables. User mappings are intentionally not inherited.
+    for (int i = 1; i < 1024; i++) {
+        if ((active_page_directory[i] & PAGE_PRESENT) &&
+            !(active_page_directory[i] & PAGE_USER)) {
+            directory[i] = active_page_directory[i] & ~PAGE_USER;
+        }
+    }
+
     return (uint32_t)directory;
+}
+
+void paging_destroy_address_space(uint32_t cr3) {
+    uint32_t *directory = (uint32_t *)(cr3 & 0xFFFFF000);
+
+    if (!cr3 || directory == page_directory || directory == active_page_directory) {
+        return;
+    }
+
+    for (int i = 0; i < 1024; i++) {
+        if (!(directory[i] & PAGE_PRESENT)) {
+            continue;
+        }
+
+        uint32_t *table = (uint32_t *)(directory[i] & 0xFFFFF000);
+
+        if (i == 0) {
+            if (table != first_page_table) {
+                frame_free((uint32_t)table);
+            }
+            directory[i] = 0x02;
+            continue;
+        }
+
+        if (!(directory[i] & PAGE_USER)) {
+            continue;
+        }
+
+        for (int j = 0; j < 1024; j++) {
+            if (table[j] & PAGE_PRESENT) {
+                frame_free(table[j] & 0xFFFFF000);
+                table[j] = 0x02;
+            }
+        }
+        frame_free((uint32_t)table);
+        directory[i] = 0x02;
+    }
+
+    frame_free((uint32_t)directory);
 }
 
 static void paging_destroy_cloned_directory(uint32_t *directory) {
