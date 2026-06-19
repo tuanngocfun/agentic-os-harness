@@ -90,6 +90,25 @@ Default behavior:
 
 Release-like or shared branches need stronger gates: reviewer approval, full boot validation, drift checks, safety checks, and explicit rollback notes.
 
+## Branch Refresh And Commit Stack Policy
+
+When the user asks to publish ongoing OS work, first refresh remote refs and choose the highest relevant implementation head, not the oldest default branch. Prefer the branch that contains the newest proven OS subsystem commits, then create a short-lived branch with a scope-revealing name such as `feature/red-blue-process-hardening`.
+
+Before staging, write down the intended commit stack. A good stack keeps one review concern per commit:
+- Harness contract/profile/docs updates.
+- Runtime test script and Makefile gate updates.
+- Kernel implementation for one subsystem or one finding.
+- Red-team/blue-team finding documentation.
+
+Each commit should be reviewable on its own and should either build or clearly be docs-only. Do not mix unrelated notes, generated artifacts, or exploratory scratch files into the stack. If unknown untracked files exist, leave them unstaged unless the user explicitly identifies them as part of the change.
+
+Recommended gate cadence:
+- Before the first commit: `git status --short`, `git diff --stat`, and targeted validation for the touched subsystem.
+- After each high-risk kernel commit: `make all` plus the focused runtime gate.
+- Before push: `make test`, `make test-deep`, `make test-red-team`, harness contract, git preflight, and `git diff --check` unless a skipped gate is explicitly documented.
+
+This maps the small-CL practice from Google-style review, Anthropic/OpenAI-style eval discipline, and Meta-style risk-aware gating into this repo: smaller commits, explicit evidence, and no hidden broad staging.
+
 ## Risk Gates
 
 | Risk | Git examples | Required gates |
