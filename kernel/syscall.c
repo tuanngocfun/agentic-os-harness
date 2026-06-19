@@ -242,6 +242,9 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
     switch (syscall_num) {
         case SYS_PUTS: {
             const char *str = (const char *)arg1;
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
             // Validate pointer is in user space
             if (!is_user_pointer_valid((uint32_t)str, 1)) {
                 return SYSCALL_EFAULT;
@@ -262,19 +265,34 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
             return SYSCALL_SUCCESS;
         }
         case SYS_GETCHAR:
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
             return (uint32_t)keyboard_getchar();
 
         case SYS_CLEAR:
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
             vga_clear();
             return SYSCALL_SUCCESS;
 
         case SYS_UPTIME:
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
             return timer_get_ticks();
 
         case SYS_ECHO:
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
             return arg1;
 
         case SYS_TEST_ABI:
+            if (is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
             serial_puts("SYSCALL_ABI_OK:");
             if (arg1 == 0x11111111 && arg2 == 0x22222222 && arg3 == 0x33333333) {
                 serial_puts("ARGS_OK");
@@ -396,6 +414,9 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
                     break;
                 case SYSCALL_MARK_RED_PROCESS_DESTROY_CLEANUP_BLOCKED:
                     serial_puts("RED_PROCESS_DESTROY_CLEANUP_BLOCKED\n");
+                    break;
+                case SYSCALL_MARK_RED_SYSCALL_PRIV_BLOCKED:
+                    serial_puts("RED_SYSCALL_PRIVILEGE_BLOCKED\n");
                     break;
                 case SYSCALL_MARK_RED_DEFENSES_DONE:
                     serial_puts("RED_DEFENSES_OK\n");

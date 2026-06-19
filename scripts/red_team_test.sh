@@ -48,6 +48,8 @@ write_findings() {
   printf '%s\n' '{"id":"RT-ELF-001","subsystem":"elf-loader","severity":"high","status":"blocked_by_blue_team","evidence_marker":"RED_ELF_OVERLAP_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-elf-001"}' >> "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-EXEC-003","subsystem":"process-exec-failure-cleanup","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_EXEC_FAILURE_CLEANUP_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-exec-003"}' >> "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-PROC-001","subsystem":"process-lifecycle-cleanup","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_PROCESS_DESTROY_CLEANUP_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-proc-001"}' >> "$FINDINGS_LOG"
+  printf '%s\n' '{"id":"RT-SYSCALL-001","subsystem":"syscall-test-only-surface","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_SYSCALL_PRIVILEGE_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-syscall-001"}' >> "$FINDINGS_LOG"
+  printf '%s\n' '{"id":"RT-SCHED-001","subsystem":"scheduler-preemption-boundary","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_SCHED_YIELD_MIXING_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-sched-001"}' >> "$FINDINGS_LOG"
 }
 
 echo "=== Red-Team / Blue-Team Defense Gate ==="
@@ -92,7 +94,9 @@ failure_present "RED_TEAM_FAIL" && fail "red-team selftest reported RED_TEAM_FAI
 marker_present "RED_TEAM_TEST" || fail "red-team test did not start"
 marker_present "SYSCALL_FILE_OK" && fail "marker forgery emitted a trusted non-red marker"
 marker_present "RED_MARKER_FORGERY_BLOCKED" || fail "RT-HARNESS-001 attack was not blocked"
+marker_present "RED_SYSCALL_PRIVILEGE_BLOCKED" || fail "RT-SYSCALL-001 attack was not blocked"
 marker_present "RED_EXEC_RESIDUAL_MAPPING_BLOCKED" || fail "RT-EXEC-001 attack was not blocked"
+marker_present "RED_SCHED_YIELD_MIXING_BLOCKED" || fail "RT-SCHED-001 attack was not blocked"
 marker_present "RED_SIMPLEFS_DOS_BLOCKED" || fail "RT-FS-001 attack was not blocked"
 marker_present "RED_VFS_NAMESPACE_BLOCKED" || fail "RT-FS-002 attack was not blocked"
 marker_present "RED_ELF_OVERLAP_BLOCKED" || fail "RT-ELF-001 attack was not blocked"
@@ -112,9 +116,13 @@ grep -Fq '"id":"RT-EXEC-002"' "$FINDINGS_LOG" || fail "missing RT-EXEC-002 findi
 grep -Fq '"id":"RT-ELF-001"' "$FINDINGS_LOG" || fail "missing RT-ELF-001 finding"
 grep -Fq '"id":"RT-EXEC-003"' "$FINDINGS_LOG" || fail "missing RT-EXEC-003 finding"
 grep -Fq '"id":"RT-PROC-001"' "$FINDINGS_LOG" || fail "missing RT-PROC-001 finding"
+grep -Fq '"id":"RT-SYSCALL-001"' "$FINDINGS_LOG" || fail "missing RT-SYSCALL-001 finding"
+grep -Fq '"id":"RT-SCHED-001"' "$FINDINGS_LOG" || fail "missing RT-SCHED-001 finding"
 
 echo "[PASS] RT-HARNESS-001 marker forgery blocked"
+echo "[PASS] RT-SYSCALL-001 test-only syscall surface blocked"
 echo "[PASS] RT-EXEC-001 exec residual mapping blocked"
+echo "[PASS] RT-SCHED-001 preemptive yield mixing blocked"
 echo "[PASS] RT-FS-001 SimpleFS exhaustion blocked"
 echo "[PASS] RT-FS-002 namespace abuse blocked"
 echo "[PASS] RT-ELF-001 overlapping ELF segments blocked"

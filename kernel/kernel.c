@@ -699,6 +699,26 @@ static uint8_t redteam_dos_buf[REDTEAM_DOS_WRITE_SIZE];
 
 static __attribute__((noreturn)) void redteam_user_entry(void);
 
+static int redteam_scheduler_yield_mixing_blocked_probe(void) {
+    process_init();
+    scheduler_init();
+
+    struct process *current = process_create_preemptive((uint32_t)redteam_user_entry);
+    struct process *other = process_create_preemptive((uint32_t)redteam_user_entry);
+    if (!current || !other) {
+        return 0;
+    }
+
+    scheduler_set_current(current);
+    scheduler_add(other);
+    uint32_t before_count = scheduler_get_count();
+    yield();
+
+    return scheduler_get_current() == current &&
+           scheduler_get_count() == before_count &&
+           other->state == PROCESS_READY;
+}
+
 static int redteam_simplefs_dos_blocked_probe(void) {
     const char *path = "/red-dos";
     struct vfs_stat stat;
@@ -983,6 +1003,13 @@ static __attribute__((noreturn)) void redteam_user_entry(void) {
     result = syscall3(SYS_TEST_MARKER, SYSCALL_MARK_FILE_DONE, 0, 0);
     if (result == SYSCALL_EPERM) {
         syscall_marker(SYSCALL_MARK_RED_MARKER_BLOCKED);
+    } else {
+        syscall_marker(SYSCALL_MARK_RED_FAIL);
+    }
+
+    result = syscall3(SYS_TEST_ABI, 0x11111111, 0x22222222, 0x33333333);
+    if (result == SYSCALL_EPERM) {
+        syscall_marker(SYSCALL_MARK_RED_SYSCALL_PRIV_BLOCKED);
     } else {
         syscall_marker(SYSCALL_MARK_RED_FAIL);
     }
@@ -1558,6 +1585,14 @@ void kernel_main(void) {
 
         vfs_format();
         vfs_mount();
+        if (redteam_scheduler_yield_mixing_blocked_probe()) {
+            serial_puts("RED_SCHED_YIELD_MIXING_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
         if (redteam_simplefs_dos_blocked_probe()) {
             serial_puts("RED_SIMPLEFS_DOS_BLOCKED\n");
         } else {
