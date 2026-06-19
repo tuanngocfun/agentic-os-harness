@@ -4,6 +4,8 @@
 
 QEMU is a normal userspace process when run normally, but isolation is not magic. Safety depends on command shape, user privileges, and what host resources are exposed.
 
+The OS security posture is evidence-scoped. Functional gates prove specific boot, memory, syscall, scheduler, storage, and process behaviors; they do not prove broad adversarial hardening. The current posture is `known_red_team_attacks_blocked_security_not_complete`: known red-team probes are blocked by current blue controls, and new probes must keep raising the bar.
+
 ## Safe Default
 
 ```bash
@@ -58,3 +60,19 @@ Require explicit human approval before:
 - No root requirement in normal workflow.
 - No hidden mutation outside `build/`.
 - Docs clearly separate toy/teaching OS from production OS.
+
+## Adversarial Findings Gate
+
+`make test-red-team` is the current guest-only adversarial gate. `make test-blue-team` is an alias for the same runtime defense proof. A pass means the known attack probes were attempted, blocked, and written to `build/red-team/findings.jsonl`; it is not a broad hardening pass.
+
+Current blocked findings:
+- `RT-HARNESS-001`: no-capability ring-3 marker forgery is rejected.
+- `RT-EXEC-001`: exec residual heap mapping is rejected by post-exec pointer validation.
+- `RT-FS-001`: SimpleFS truncate/write sector exhaustion is blocked through sector reuse.
+- `RT-FS-002`: relative, nested, `.`, and `..` filesystem names are rejected.
+- `RT-EXEC-002`: writable VFS descriptors do not survive successful exec.
+- `RT-ELF-001`: overlapping ELF load page ranges are rejected before partial user mappings are created.
+- `RT-EXEC-003`: failed exec attempts do not leak address-space frames.
+- `RT-PROC-001`: destroying a process with a private address space reclaims owned frames.
+
+Patch planning and next hardening work live in `harness-engineering/blue-team/PATCH_PLAYBOOKS.md`.

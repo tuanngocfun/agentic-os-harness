@@ -8,6 +8,8 @@
 - [Boot Markers](./03-os-harness-config/boot-markers.md) — COM1 marker protocol and exact parser rules.
 - [Validation](./06-validation/README.md) — Boot-test protocol, drift checks, negative parser fixtures.
 - [Safety](./09-safety-and-security/README.md) — QEMU host safety and evidence isolation.
+- [Red Team](./red-team/README.md) — Guest-only adversarial probes and red/blue defense-regression gates.
+- [Blue Team](./blue-team/README.md) — Current blocked findings, patch playbooks, and future strict verification gates.
 - [Implementation Checklist](./10-implementation-checklist/README.md) — Pre-implementation gate checklist.
 - [Reference](./11-reference/README.md) — Anti-patterns, glossary, source map.
 - [Git Change Management](./12-git-change-management/README.md) — Git status, branch, diff, staging, commit, push, and handoff gates.

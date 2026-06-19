@@ -108,10 +108,15 @@ Deep gates are explicit and may rebuild with selftest defines:
 - `make test-scheduler-safety`
 - `make test-shell-io`
 
+Adversarial gates are explicit red/blue defense-regression probes:
+- `make test-red-team`
+- `make test-blue-team`
+
 Rules:
 - Do not put deep probes directly in the default `kernel_main()` path.
 - Do not let a deep probe run inside `make test` unless the project phase explicitly promotes it.
 - A deep gate fails unless it triggers and observes the intended behavior.
+- A red/blue gate passes only when known attack probes are attempted, blocked, and recorded; it is not a broad hardening pass.
 - After a deep gate, rebuild or restore the default image so the next boot test is not contaminated by selftest defines.
 
 ## Harness Profile Contract
@@ -121,6 +126,7 @@ Rules:
 - current required, optional, and failure markers;
 - claim status for each subsystem;
 - fast gates and deep gates;
+- security posture and adversarial gates;
 - format policy for Markdown/YAML/JSONL/HTML artifacts;
 - MiMo next-task priority.
 
@@ -143,6 +149,7 @@ Current claim policy:
 - `user_mode` is claimable only as a ring-3 transition and user/supervisor page-fault proof through `make test-usermode`.
 - Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. `scripts/shell_io_test.sh` is the separate targeted route for `echo ok`; argument-bearing commands beyond that need their own unambiguous I/O proof.
 - ELF process launch/execution, networking, graphics mode, and additional shell breadth remain unclaimed until they have targeted runtime gates.
+- Security posture is `known_red_team_attacks_blocked_security_not_complete`; `make test-red-team` currently proves the known attack probes are blocked and writes JSONL evidence.
 
 ## Build-Config Rebuild Protocol
 

@@ -10,6 +10,20 @@ format_policy:
   rendered_reports: "html"
   rule: "Instruction files stay concise Markdown; machine state stays YAML/JSONL; HTML is for rendered reports, not agent input contracts."
 
+security_posture:
+  claim: "known_red_team_attacks_blocked_security_not_complete"
+  mode: "red_blue_regression_blocking"
+  findings_log: "build/red-team/findings.jsonl"
+  blocked_findings:
+    - "RT-HARNESS-001"
+    - "RT-EXEC-001"
+    - "RT-FS-001"
+    - "RT-FS-002"
+    - "RT-EXEC-002"
+    - "RT-ELF-001"
+    - "RT-EXEC-003"
+    - "RT-PROC-001"
+
 boot_profile:
   loader: "stage2_lba_loader"
   stage2_reserved_sectors: 32
@@ -89,6 +103,10 @@ deep_gates:
   - "vfs_simplefs_runtime_test"
   - "shell_command_io_stable_test"
 
+adversarial_gates:
+  - "make test-red-team"
+  - "make test-blue-team"
+
 pending_deep_gates: []
 
 routes:
@@ -146,8 +164,33 @@ routes:
       - "make test"
       - "targeted_runtime_test_for_claimed_subsystem"
       - "panic_or_fault_evidence_for_negative_paths"
+  adversarial_red_team:
+    allowed_paths:
+      - "kernel/kernel.c"
+      - "kernel/syscall.c"
+      - "kernel/elf.c"
+      - "kernel/paging.c"
+      - "kernel/process.c"
+      - "kernel/simplefs.c"
+      - "kernel/vfs.c"
+      - "include/elf.h"
+      - "include/paging.h"
+      - "include/vfs.h"
+      - "include/syscall.h"
+      - "scripts/red_team_test.sh"
+      - "harness-engineering/red-team/"
+      - "harness-engineering/blue-team/"
+      - "harness-engineering/harness_profile.yaml"
+    required_gates:
+      - "make all"
+      - "make test-red-team"
+      - "make test-blue-team"
+      - "check_harness_contract"
 
 mimo_next_tasks:
+  - id: "red-blue-fuzz-expansion"
+    priority: "P0"
+    success: "Add the next adversarial probes for syscall fuzzing and scheduler/preemption race surfaces while keeping normal functional gates green."
   - id: "fork-wait-exec-replacement-hardening"
     priority: "P0"
     success: "Implement true fork child-return semantics, zombie wait/reap coverage, and exec address-space replacement with targeted runtime gates."

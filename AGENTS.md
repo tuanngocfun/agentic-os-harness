@@ -2,7 +2,7 @@
 
 ## Project Overview
 x86 bare metal teaching operating system written in C and x86 assembly (NASM syntax).
-Runs on QEMU i386 emulator. Has QEMU-validated stage-2 boot, shell `help`, syscall ABI, ring-3 syscall negative paths, exception panic, paging, cooperative scheduler, timer preemption, scheduler priority/fairness safety proof, E820 memory-map detection, physical frame allocator lifecycle, heap allocator, ring-3 user-mode, per-process address-space switching, VFS-backed file syscalls, ELF loader preparation, process syscall + ELF entry-transfer proof, and shell `echo ok` gates. These are evidence-scoped proofs, not a complete operating system claim.
+Runs on QEMU i386 emulator. Has QEMU-validated stage-2 boot, shell `help`, syscall ABI, ring-3 syscall negative paths, exception panic, paging, cooperative scheduler, timer preemption, scheduler priority/fairness safety proof, E820 memory-map detection, physical frame allocator lifecycle, heap allocator, ring-3 user-mode, per-process address-space switching, VFS-backed file syscalls, ELF loader preparation, process syscall + ELF entry-transfer proof, and shell `echo ok` gates. These are evidence-scoped proofs, not a complete operating system claim. Current security posture is red/blue regression: `make test-red-team` attempts known attacks, proves current blue controls block them, and writes `build/red-team/findings.jsonl`.
 Before advanced core work, read `harness-engineering/harness_profile.yaml` and `harness-engineering/13-agent-routing-and-risk/README.md`.
 
 ## Tech Stack
@@ -73,8 +73,9 @@ make clean
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 - Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and `help` rendering.
 - `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, VFS-backed ring-3 file syscall evidence, ELF loader-prep evidence, process syscall + VFS-backed ELF entry-transfer evidence, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, ramdisk block-device evidence, kernel VFS + flat SimpleFS evidence, and `echo ok` shell I/O.
+- `make test-red-team` and `make test-blue-team` are separate from `make test-deep`; they are guest-only adversarial regression gates, not production security passes.
 - Still not proven: production-grade virtual memory, SMP-safe scheduling, full userland ABI coverage, true `fork` child-return semantics, blocking `wait`, full exec address-space replacement/argv/envp, persistent storage, networking, or graphics.
-- Current next work order: implement true fork/wait/exec replacement semantics while keeping all core gates green.
+- Current next work order: expand the red/blue adversarial catalog with syscall fuzzing and scheduler/preemption race probes while keeping all normal gates green.
 
 ## Memory Map
 | Address | Content |
