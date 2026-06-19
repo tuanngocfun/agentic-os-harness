@@ -15,6 +15,21 @@ Verification gate:
 Next hardening:
 - Replace static marker capabilities with per-test kernel-issued capabilities or remove user marker emission from trusted evidence entirely.
 
+## RT-SYSCALL-001
+
+Goal: keep diagnostic/test-only syscall surfaces from being callable by arbitrary ring-3 programs.
+
+Implemented control:
+- `SYS_TEST_ABI` now rejects ring-3 callers with `SYSCALL_EPERM`.
+- The red probe calls `SYS_TEST_ABI` from ring 3 with the exact success argument pattern and fails if the ABI success marker can be forged.
+
+Verification gate:
+- `make test-red-team` proves the ring-3 test-only ABI marker path is blocked.
+- `make test-syscall` must continue to prove the kernel-side syscall ABI register contract.
+
+Next hardening:
+- Move all marker-producing pseudo-syscalls behind compile-time selftest-only dispatch tables or replace marker syscalls with kernel-owned event buffers.
+
 ## RT-EXEC-001
 
 Goal: make `SYS_EXEC` replace the process image instead of only changing the return EIP.
@@ -65,6 +80,21 @@ Verification gate:
 
 Next hardening:
 - Add an explicit path canonicalizer when directories, delete, rename, or mount points become claimed features.
+
+## RT-SCHED-001
+
+Goal: prevent preemptive interrupt-frame tasks from entering cooperative context-switch code.
+
+Implemented control:
+- `yield()` returns without scheduling when the current process is backed by an interrupt frame.
+- The red probe sets a preemptive task as current, enqueues another runnable preemptive task, calls `yield()`, and requires both current task and schedule count to remain unchanged.
+
+Verification gate:
+- `make test-red-team` proves the adversarial preemptive-yield mixing case is blocked.
+- `make test-scheduler-safety` must continue to prove the functional yield guard, priority, fairness, and critical-section markers.
+
+Next hardening:
+- Split cooperative and interrupt-driven task types at the API level so invalid scheduling operations are harder to call accidentally.
 
 ## RT-EXEC-002
 

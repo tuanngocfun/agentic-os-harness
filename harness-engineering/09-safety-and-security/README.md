@@ -67,7 +67,9 @@ Require explicit human approval before:
 
 Current blocked findings:
 - `RT-HARNESS-001`: no-capability ring-3 marker forgery is rejected.
+- `RT-SYSCALL-001`: ring-3 access to test-only ABI marker syscall is rejected.
 - `RT-EXEC-001`: exec residual heap mapping is rejected by post-exec pointer validation.
+- `RT-SCHED-001`: preemptive interrupt-frame tasks cannot enter cooperative `yield()` switching.
 - `RT-FS-001`: SimpleFS truncate/write sector exhaustion is blocked through sector reuse.
 - `RT-FS-002`: relative, nested, `.`, and `..` filesystem names are rejected.
 - `RT-EXEC-002`: writable VFS descriptors do not survive successful exec.

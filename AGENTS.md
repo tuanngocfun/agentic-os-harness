@@ -75,7 +75,7 @@ make clean
 - `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, VFS-backed ring-3 file syscall evidence, ELF loader-prep evidence, process syscall + VFS-backed ELF entry-transfer evidence, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, ramdisk block-device evidence, kernel VFS + flat SimpleFS evidence, and `echo ok` shell I/O.
 - `make test-red-team` and `make test-blue-team` are separate from `make test-deep`; they are guest-only adversarial regression gates, not production security passes.
 - Still not proven: production-grade virtual memory, SMP-safe scheduling, full userland ABI coverage, true `fork` child-return semantics, blocking `wait`, full exec address-space replacement/argv/envp, persistent storage, networking, or graphics.
-- Current next work order: expand the red/blue adversarial catalog with syscall fuzzing and scheduler/preemption race probes while keeping all normal gates green.
+- Current next work order: implement true fork child-return semantics, zombie wait/reap coverage, and deeper exec replacement hardening with targeted runtime gates.
 
 ## Memory Map
 | Address | Content |

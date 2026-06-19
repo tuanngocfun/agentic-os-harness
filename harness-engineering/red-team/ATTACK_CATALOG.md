@@ -12,6 +12,16 @@ The catalog tracks current adversarial assumptions. Each item has a matching blu
 
 Ring-3 code previously could call `SYS_TEST_MARKER` and emit trusted harness markers. The current probe attempts the old no-capability marker forgery and expects `SYSCALL_EPERM`; if the old trusted marker appears, the gate fails.
 
+## RT-SYSCALL-001: Test-Only Syscall Surface Fuzzing
+
+- Subsystem: syscall test-only surface
+- Severity: medium
+- Attack/defense gate: `make test-red-team`
+- Evidence marker: `RED_SYSCALL_PRIVILEGE_BLOCKED`
+- Finding log ID: `RT-SYSCALL-001`
+
+Test-only syscall entry points can become marker forgery or privileged side-effect paths if they stay reachable from arbitrary ring-3 code. The current probe calls the ABI marker syscall from ring 3 with the exact success arguments and expects `SYSCALL_EPERM`.
+
 ## RT-EXEC-001: Exec Residual Mapping
 
 - Subsystem: process exec
@@ -41,6 +51,16 @@ SimpleFS v1 previously used contiguous append-only allocation. The current probe
 - Finding log ID: `RT-FS-002`
 
 SimpleFS initially accepted relative names such as `relative` even though the claimed namespace is root-only absolute paths such as `/hello.txt`. The current probe attempts relative, nested, `.`, and `..` names and expects `VFS_EINVAL` so aliases do not become future traversal or policy-bypass hooks.
+
+## RT-SCHED-001: Preemptive Yield Mixing
+
+- Subsystem: scheduler preemption boundary
+- Severity: medium
+- Attack/defense gate: `make test-red-team`
+- Evidence marker: `RED_SCHED_YIELD_MIXING_BLOCKED`
+- Finding log ID: `RT-SCHED-001`
+
+Preemptive tasks use interrupt-frame stacks and must not enter the cooperative `yield()` path, which expects a different context layout. The current probe sets a preemptive task as current, places another runnable task in the ready queue, calls `yield()`, and expects no scheduling or context switch to occur.
 
 ## RT-EXEC-002: Exec File Descriptor Leak
 

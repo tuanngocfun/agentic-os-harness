@@ -1,6 +1,6 @@
 profile_version: "2026-06-02"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_prep_process_syscall_elf_entry"
+project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_prep_process_syscall_elf_entry_red_blue_fuzz_expanded"
 source_of_truth: true
 
 format_policy:
@@ -23,6 +23,8 @@ security_posture:
     - "RT-ELF-001"
     - "RT-EXEC-003"
     - "RT-PROC-001"
+    - "RT-SYSCALL-001"
+    - "RT-SCHED-001"
 
 boot_profile:
   loader: "stage2_lba_loader"
@@ -188,12 +190,12 @@ routes:
       - "check_harness_contract"
 
 mimo_next_tasks:
-  - id: "red-blue-fuzz-expansion"
-    priority: "P0"
-    success: "Add the next adversarial probes for syscall fuzzing and scheduler/preemption race surfaces while keeping normal functional gates green."
   - id: "fork-wait-exec-replacement-hardening"
     priority: "P0"
     success: "Implement true fork child-return semantics, zombie wait/reap coverage, and exec address-space replacement with targeted runtime gates."
+  - id: "red-blue-fuzz-continuation"
+    priority: "P1"
+    success: "Keep expanding guest-only syscall, scheduler, paging, and ELF fuzz probes after each new feature lands."
 
 forbidden_next_breadth:
   - "networking"

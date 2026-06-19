@@ -11,6 +11,17 @@
 
 Status: blocked by current blue control; keep regression probe active.
 
+## RT-SYSCALL-001
+
+- Impact: test-only syscall surfaces can let ring-3 programs forge runtime evidence or trigger privileged diagnostic side effects outside the intended selftest route.
+- Attack/defense gate: `make test-red-team`
+- Expected marker: `RED_SYSCALL_PRIVILEGE_BLOCKED`
+- Machine evidence: `build/red-team/findings.jsonl`
+- Blue control: `SYS_TEST_ABI` is kernel-selftest-only; ring-3 attempts with the success argument pattern return `SYSCALL_EPERM`.
+- Verification gate: `make test-red-team`
+
+Status: blocked by current blue control; keep regression probe active.
+
 ## RT-EXEC-001
 
 - Impact: `SYS_EXEC` transfers control into a new ELF without full address-space replacement, so old heap mappings can survive into the new image.
@@ -40,6 +51,17 @@ Status: blocked by current blue control; keep regression probe active.
 - Expected marker: `RED_VFS_NAMESPACE_BLOCKED`
 - Machine evidence: `build/red-team/findings.jsonl`
 - Blue control: SimpleFS now requires `/name` root paths, rejects nested paths, and rejects `/.` plus `/..`.
+- Verification gate: `make test-red-team`
+
+Status: blocked by current blue control; keep regression probe active.
+
+## RT-SCHED-001
+
+- Impact: preemptive tasks with interrupt-frame stacks can corrupt scheduler state if they enter the cooperative `yield()` path.
+- Attack/defense gate: `make test-red-team`
+- Expected marker: `RED_SCHED_YIELD_MIXING_BLOCKED`
+- Machine evidence: `build/red-team/findings.jsonl`
+- Blue control: `yield()` returns immediately when the current process is interrupt-frame based, and the adversarial probe verifies that current task and schedule count remain unchanged.
 - Verification gate: `make test-red-team`
 
 Status: blocked by current blue control; keep regression probe active.

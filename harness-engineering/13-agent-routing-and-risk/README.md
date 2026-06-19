@@ -24,7 +24,7 @@ Proven now:
 - Memory selftest proves E820-backed usable-memory detection for the configured 512 MiB QEMU run. E820/frame selftest proves E820 map handoff and physical frame allocation/free/reuse/exhaustion. Allocator selftest proves fixed-heap `kmalloc`/`kfree` allocation, reuse, free/coalescing accounting, and exhaustion.
 - User-mode selftest proves a ring-3 transition and controlled user/supervisor page fault. It does not prove full userland.
 - VFS and SimpleFS selftests prove a volatile root-only flat filesystem on ramdisk. File syscall selftest proves VFS-backed ring-3 open/read/write/close/stat. ELF loader prep selftest proves VFS-backed ELF32/i386 header validation, PT_LOAD materialization into user-mapped pages, BSS zero-fill, and negative paths. Process syscall selftest proves ring-3 `getpid`, dynamic `brk` query/grow/read-write/shrink, no-child `wait`, and `exec` transfer into a VFS-backed ELF entry.
-- Red/blue adversarial gate proves the current known attack catalog is blocked, including marker forgery, exec residual mapping and fd leaks, failed exec cleanup, process-destroy address-space cleanup, SimpleFS exhaustion/namespace abuse, and overlapping ELF segment rejection. This corrects the security posture without claiming broad hardening.
+- Red/blue adversarial gate proves the current known attack catalog is blocked, including marker forgery, test-only syscall marker abuse, exec residual mapping and fd leaks, failed exec cleanup, process-destroy address-space cleanup, SimpleFS exhaustion/namespace abuse, preemptive-yield mixing, and overlapping ELF segment rejection. This corrects the security posture without claiming broad hardening.
 
 Not proven:
 - Production-grade virtual memory or dynamic heap growth from arbitrary frame runs.
@@ -92,11 +92,11 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Next MiMo Tasks
 
-1. `red-blue-fuzz-expansion`
-   Add the next adversarial probes for syscall fuzzing and scheduler/preemption race surfaces while keeping normal functional gates green.
-
-2. `fork-wait-exec-replacement-hardening`
+1. `fork-wait-exec-replacement-hardening`
    Build on the proven process syscall + ELF-entry gate to implement true `fork` child-return semantics, zombie wait/reap coverage, and exec address-space replacement with a dedicated runtime gate.
+
+2. `red-blue-fuzz-continuation`
+   Keep expanding guest-only syscall, scheduler, paging, and ELF fuzz probes after each new feature lands.
 
 3. `core-stress-and-static-hardening`
    Re-run syscall, scheduler, paging, E820, frame, allocator, VFS, and ELF-loader gates under broader stress/static review before adding unrelated OS breadth.
