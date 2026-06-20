@@ -157,7 +157,7 @@ static uint8_t vfs_read_buf[SECTOR_SIZE * 2 + 37];
 #endif
 
 #if defined(ENABLE_ELF_LOADER_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_REDTEAM_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
 #define ELF_TEST_VADDR 0x40000000u
 #define ELF_TEST_ENTRY (ELF_TEST_VADDR + 0x20u)
 #define ELF_TEST_FILE_SIZE 512u
@@ -175,7 +175,7 @@ static uint8_t elf_kernel_addr_image[ELF_TEST_FILE_SIZE];
 #endif
 
 #if defined(ENABLE_ELF_LOADER_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_REDTEAM_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
 static void elf_put16(uint8_t *buf, uint32_t offset, uint16_t value) {
     buf[offset] = (uint8_t)(value & 0xFF);
     buf[offset + 1] = (uint8_t)((value >> 8) & 0xFF);
@@ -281,7 +281,7 @@ static void address_space_dummy_task(void) {
 
 #if defined(ENABLE_USERMODE_SELFTEST) || defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || \
     defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_REDTEAM_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
 extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
 #endif
 
@@ -309,7 +309,8 @@ static __attribute__((noreturn)) void usermode_selftest_entry(void) {
 #endif
 
 #if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || \
-    defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
+    defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || \
+    defined(ENABLE_REDTEAM_SELFTEST)
 static void syscall_marker(uint32_t marker) {
     uint32_t ignored = SYS_TEST_MARKER;
     asm volatile(
@@ -394,7 +395,7 @@ static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
 #endif
 
 #if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_REDTEAM_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
 static uint32_t syscall3(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     asm volatile(
         "int $0x80"
@@ -557,7 +558,7 @@ static __attribute__((noreturn)) void syscall_file_user_entry(void) {
 #endif
 
 #if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_REDTEAM_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
 static void map_user_code_span(uint32_t start, uint32_t end) {
     uint32_t first = start & 0xFFFFF000;
     uint32_t last = end & 0xFFFFF000;
@@ -574,7 +575,8 @@ static void map_user_code_span(uint32_t start, uint32_t end) {
 }
 #endif
 
-#if defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
+#if defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || \
+    defined(ENABLE_REDTEAM_SELFTEST)
 #define PROCESS_EXEC_CODE_OFFSET (ELF_TEST_SEGMENT_OFFSET + 0x20u)
 
 static void process_emit_marker(uint8_t *code, uint32_t *offset, uint8_t marker) {
@@ -686,6 +688,143 @@ static __attribute__((noreturn)) void process_syscall_user_entry(void) {
 }
 #endif
 
+#ifdef ENABLE_PROCESS_LIFECYCLE_SELFTEST
+static void lifecycle_set_exec_path(char *path) {
+    path[0] = '/';
+    path[1] = 'l';
+    path[2] = 'i';
+    path[3] = 'f';
+    path[4] = 'e';
+    path[5] = '.';
+    path[6] = 'e';
+    path[7] = 'l';
+    path[8] = 'f';
+    path[9] = '\0';
+}
+
+static void lifecycle_make_exec_image(void) {
+    uint8_t *code = elf_test_image + PROCESS_EXEC_CODE_OFFSET;
+    uint32_t offset = 0;
+    uint32_t heap_jump;
+    uint32_t brk_jump;
+
+    elf_make_image(elf_test_image, ELF_TEST_VADDR);
+
+    code[offset++] = 0x6A;  // push SYS_WRITE
+    code[offset++] = SYS_WRITE;
+    code[offset++] = 0x58;  // pop eax
+    code[offset++] = 0x6A;  // push 99
+    code[offset++] = 99;
+    code[offset++] = 0x5B;  // pop ebx
+    code[offset++] = 0xB9;  // mov ecx, PROCESS_HEAP_START
+    elf_put32(code, offset, PROCESS_HEAP_START);
+    offset += 4;
+    code[offset++] = 0x6A;  // push 4
+    code[offset++] = 4;
+    code[offset++] = 0x5A;  // pop edx
+    code[offset++] = 0xCD;
+    code[offset++] = 0x80;
+    code[offset++] = 0x3D;  // cmp eax, SYSCALL_EFAULT
+    elf_put32(code, offset, SYSCALL_EFAULT);
+    offset += 4;
+    code[offset++] = 0x75;
+    heap_jump = offset++;
+
+    code[offset++] = 0x6A;  // push SYS_BRK
+    code[offset++] = SYS_BRK;
+    code[offset++] = 0x58;  // pop eax
+    code[offset++] = 0x31;
+    code[offset++] = 0xDB;  // xor ebx, ebx
+    code[offset++] = 0x31;
+    code[offset++] = 0xC9;  // xor ecx, ecx
+    code[offset++] = 0x31;
+    code[offset++] = 0xD2;  // xor edx, edx
+    code[offset++] = 0xCD;
+    code[offset++] = 0x80;
+    code[offset++] = 0x3D;  // cmp eax, PROCESS_HEAP_START
+    elf_put32(code, offset, PROCESS_HEAP_START);
+    offset += 4;
+    code[offset++] = 0x75;
+    brk_jump = offset++;
+
+    process_emit_marker(code, &offset, SYSCALL_MARK_LIFECYCLE_EXEC_REPLACED);
+    process_emit_marker(code, &offset, SYSCALL_MARK_LIFECYCLE_DONE);
+    code[offset++] = 0xEB;
+    code[offset++] = 0xFE;
+
+    uint32_t fail_offset = offset;
+    process_emit_marker(code, &offset, SYSCALL_MARK_LIFECYCLE_FAIL);
+    code[offset++] = 0xEB;
+    code[offset++] = 0xFE;
+
+    code[heap_jump] = (uint8_t)(fail_offset - (heap_jump + 1));
+    code[brk_jump] = (uint8_t)(fail_offset - (brk_jump + 1));
+    elf_put32(elf_test_image, 68, 0x20u + offset);
+    elf_put32(elf_test_image, 72, 192u);
+}
+
+static __attribute__((noreturn)) void lifecycle_user_entry(void) {
+    volatile uint32_t fork_value = 0x13579BDFu;
+    volatile uint32_t *heap = (volatile uint32_t *)PROCESS_HEAP_START;
+    char exec_path[16];
+    uint32_t status = 0;
+    uint32_t fork_result = syscall3(SYS_FORK, 0, 0, 0);
+
+    if (fork_result == 0) {
+        syscall_marker(SYSCALL_MARK_LIFECYCLE_FORK_CHILD);
+        fork_value = 0x2468ACE0u;
+        (void)syscall3(SYS_EXIT, 42, 0, 0);
+        syscall_marker(SYSCALL_MARK_LIFECYCLE_FAIL);
+        while (1) {
+        }
+    }
+
+    if (fork_result >= 0x80000000u) {
+        syscall_marker(SYSCALL_MARK_LIFECYCLE_FAIL);
+        while (1) {
+        }
+    }
+    syscall_marker(SYSCALL_MARK_LIFECYCLE_FORK_PARENT);
+
+    uint32_t waited_pid = syscall3(SYS_WAIT, (uint32_t)&status, 0, 0);
+    if (waited_pid != fork_result || status != 42) {
+        syscall_marker(SYSCALL_MARK_LIFECYCLE_FAIL);
+        while (1) {
+        }
+    }
+
+    if (syscall3(SYS_TEST_MARKER,
+                 SYSCALL_MARK_LIFECYCLE_WAIT_REAP,
+                 SYSCALL_TEST_MARKER_TOKEN,
+                 0) != SYSCALL_SUCCESS) {
+        syscall_marker(SYSCALL_MARK_LIFECYCLE_FAIL);
+        while (1) {
+        }
+    }
+
+    if (fork_value != 0x13579BDFu) {
+        syscall_marker(SYSCALL_MARK_LIFECYCLE_FAIL);
+        while (1) {
+        }
+    }
+    syscall_marker(SYSCALL_MARK_LIFECYCLE_ISOLATION);
+
+    if (syscall3(SYS_BRK, PROCESS_HEAP_START + 4, 0, 0) !=
+        PROCESS_HEAP_START + 4) {
+        syscall_marker(SYSCALL_MARK_LIFECYCLE_FAIL);
+        while (1) {
+        }
+    }
+    *heap = 0xA5A55A5Au;
+
+    lifecycle_set_exec_path(exec_path);
+    (void)syscall3(SYS_EXEC, (uint32_t)exec_path, 0, 0);
+    syscall_marker(SYSCALL_MARK_LIFECYCLE_FAIL);
+    while (1) {
+    }
+}
+#endif
+
 #ifdef ENABLE_REDTEAM_SELFTEST
 #define REDTEAM_STACK_PHYSICAL 0x00960000
 #define REDTEAM_DOS_WRITE_SIZE (SECTOR_SIZE * 32u)
@@ -694,8 +833,10 @@ static __attribute__((noreturn)) void process_syscall_user_entry(void) {
 #define REDTEAM_EXEC_FAILURE_PATH_VADDR 0x50000000u
 #define REDTEAM_EXEC_FAILURE_ATTEMPTS 8u
 #define REDTEAM_PROCESS_DESTROY_VADDR 0x51000000u
+#define REDTEAM_MAX_LOW_FRAMES 512u
 
 static uint8_t redteam_dos_buf[REDTEAM_DOS_WRITE_SIZE];
+static uint32_t redteam_low_frames[REDTEAM_MAX_LOW_FRAMES];
 
 static __attribute__((noreturn)) void redteam_user_entry(void);
 
@@ -909,6 +1050,58 @@ static int redteam_process_destroy_cleanup_blocked_probe(void) {
     process_set_address_space(proc, proc_cr3);
     process_destroy(proc);
     return frame_get_free_count() == frame_before;
+}
+
+static int redteam_fork_failure_cleanup_blocked_probe(void) {
+    struct interrupt_frame frame;
+    uint32_t frame_before = frame_get_free_count();
+    uint32_t held = 0;
+    int blocked;
+
+    process_init();
+    scheduler_init();
+    struct process *parent =
+        process_create((uint32_t)redteam_user_entry, 1);
+    if (!parent) {
+        return 0;
+    }
+
+    memset(&frame, 0, sizeof(frame));
+    frame.cs = 0x1B;
+    frame.ds = 0x23;
+    frame.es = 0x23;
+    frame.fs = 0x23;
+    frame.gs = 0x23;
+    frame.user_ss = 0x23;
+    frame.eflags = 0x202;
+
+    while (held < REDTEAM_MAX_LOW_FRAMES) {
+        uint32_t phys = frame_alloc_below(0x00400000u);
+        if (!phys) {
+            break;
+        }
+        redteam_low_frames[held++] = phys;
+    }
+
+    uint32_t count_before_fork = process_get_count();
+    uint32_t free_before_fork = frame_get_free_count();
+    struct process *child = process_fork(parent, &frame);
+    uint32_t free_after_fork = frame_get_free_count();
+
+    blocked = child == NULL &&
+              held > 0 &&
+              process_get_count() == count_before_fork &&
+              free_after_fork == free_before_fork;
+
+    if (child) {
+        process_destroy(child);
+    }
+    for (uint32_t i = 0; i < held; i++) {
+        frame_free(redteam_low_frames[i]);
+    }
+    process_destroy(parent);
+
+    return blocked && frame_get_free_count() == frame_before;
 }
 
 static void redteam_set_exec_path(char *path) {
@@ -1579,6 +1772,56 @@ void kernel_main(void) {
     }
 #endif
 
+#ifdef ENABLE_PROCESS_LIFECYCLE_SELFTEST
+    {
+        uint32_t kernel_cr3 = paging_get_current_directory();
+        uint32_t user_stack_page = USER_STACK_TOP - 4096;
+        uint32_t parent_cr3;
+        uint32_t stack_phys;
+        int ready = 0;
+
+        serial_puts("LIFECYCLE_TEST\n");
+        vfs_format();
+        vfs_mount();
+        lifecycle_make_exec_image();
+        int fixture_ok =
+            elf_write_fixture("/life.elf", elf_test_image, sizeof(elf_test_image));
+        if (fixture_ok) {
+            serial_puts("LIFECYCLE_EXEC_FIXTURE_OK\n");
+        }
+
+        process_init();
+        scheduler_init();
+        struct process *user_proc =
+            process_create((uint32_t)lifecycle_user_entry, 1);
+        parent_cr3 = paging_create_address_space();
+        stack_phys = frame_alloc();
+
+        if (fixture_ok && user_proc && parent_cr3 && stack_phys) {
+            process_set_address_space(user_proc, parent_cr3);
+            paging_switch_directory(parent_cr3);
+            map_user_code_span((uint32_t)syscall_marker,
+                               (uint32_t)lifecycle_user_entry);
+            paging_map_page(user_stack_page,
+                            stack_phys,
+                            PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+            ready = paging_is_user_accessible(user_stack_page);
+            paging_switch_directory(kernel_cr3);
+        }
+
+        if (ready) {
+            scheduler_set_current(user_proc);
+            serial_puts("LIFECYCLE_USER_READY\n");
+            enter_user_mode((uint32_t)lifecycle_user_entry, USER_STACK_TOP);
+        }
+
+        serial_puts("LIFECYCLE_FAIL\n");
+        while (1) {
+            asm volatile("cli; hlt");
+        }
+    }
+#endif
+
 #ifdef ENABLE_REDTEAM_SELFTEST
     {
         serial_puts("RED_TEAM_TEST\n");
@@ -1627,6 +1870,14 @@ void kernel_main(void) {
         }
         if (redteam_process_destroy_cleanup_blocked_probe()) {
             serial_puts("RED_PROCESS_DESTROY_CLEANUP_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+        if (redteam_fork_failure_cleanup_blocked_probe()) {
+            serial_puts("RED_FORK_FAILURE_CLEANUP_BLOCKED\n");
         } else {
             serial_puts("RED_TEAM_FAIL\n");
             while (1) {

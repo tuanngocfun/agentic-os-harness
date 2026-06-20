@@ -225,7 +225,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-shell-io
+test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-shell-io
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -301,6 +301,10 @@ test-process-syscall:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_PROCESS_SYSCALL_SELFTEST
 	@bash scripts/process_syscall_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
+test-process-lifecycle:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_PROCESS_LIFECYCLE_SELFTEST
+	@bash scripts/process_lifecycle_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 test-e820-frame:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_E820_SELFTEST
 	@bash scripts/e820_test.sh; status=$$?; $(MAKE) -B all; exit $$status
@@ -335,4 +339,4 @@ clean: guard-paths
 
 FORCE:
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-red-team test-blue-team test-shell-io clean FORCE
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-red-team test-blue-team test-shell-io clean FORCE

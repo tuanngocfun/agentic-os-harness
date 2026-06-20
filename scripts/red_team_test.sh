@@ -48,6 +48,7 @@ write_findings() {
   printf '%s\n' '{"id":"RT-ELF-001","subsystem":"elf-loader","severity":"high","status":"blocked_by_blue_team","evidence_marker":"RED_ELF_OVERLAP_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-elf-001"}' >> "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-EXEC-003","subsystem":"process-exec-failure-cleanup","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_EXEC_FAILURE_CLEANUP_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-exec-003"}' >> "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-PROC-001","subsystem":"process-lifecycle-cleanup","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_PROCESS_DESTROY_CLEANUP_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-proc-001"}' >> "$FINDINGS_LOG"
+  printf '%s\n' '{"id":"RT-PROC-002","subsystem":"process-fork-failure-cleanup","severity":"high","status":"blocked_by_blue_team","evidence_marker":"RED_FORK_FAILURE_CLEANUP_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-proc-002"}' >> "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-SYSCALL-001","subsystem":"syscall-test-only-surface","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_SYSCALL_PRIVILEGE_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-syscall-001"}' >> "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-SCHED-001","subsystem":"scheduler-preemption-boundary","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_SCHED_YIELD_MIXING_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-sched-001"}' >> "$FINDINGS_LOG"
 }
@@ -102,6 +103,7 @@ marker_present "RED_VFS_NAMESPACE_BLOCKED" || fail "RT-FS-002 attack was not blo
 marker_present "RED_ELF_OVERLAP_BLOCKED" || fail "RT-ELF-001 attack was not blocked"
 marker_present "RED_EXEC_FAILURE_CLEANUP_BLOCKED" || fail "RT-EXEC-003 attack was not blocked"
 marker_present "RED_PROCESS_DESTROY_CLEANUP_BLOCKED" || fail "RT-PROC-001 attack was not blocked"
+marker_present "RED_FORK_FAILURE_CLEANUP_BLOCKED" || fail "RT-PROC-002 attack was not blocked"
 marker_present "RED_EXEC_FD_LEAK_BLOCKED" || fail "RT-EXEC-002 attack was not blocked"
 marker_present "RED_DEFENSES_OK" || fail "red/blue defense gate incomplete"
 
@@ -116,6 +118,7 @@ grep -Fq '"id":"RT-EXEC-002"' "$FINDINGS_LOG" || fail "missing RT-EXEC-002 findi
 grep -Fq '"id":"RT-ELF-001"' "$FINDINGS_LOG" || fail "missing RT-ELF-001 finding"
 grep -Fq '"id":"RT-EXEC-003"' "$FINDINGS_LOG" || fail "missing RT-EXEC-003 finding"
 grep -Fq '"id":"RT-PROC-001"' "$FINDINGS_LOG" || fail "missing RT-PROC-001 finding"
+grep -Fq '"id":"RT-PROC-002"' "$FINDINGS_LOG" || fail "missing RT-PROC-002 finding"
 grep -Fq '"id":"RT-SYSCALL-001"' "$FINDINGS_LOG" || fail "missing RT-SYSCALL-001 finding"
 grep -Fq '"id":"RT-SCHED-001"' "$FINDINGS_LOG" || fail "missing RT-SCHED-001 finding"
 
@@ -128,6 +131,7 @@ echo "[PASS] RT-FS-002 namespace abuse blocked"
 echo "[PASS] RT-ELF-001 overlapping ELF segments blocked"
 echo "[PASS] RT-EXEC-003 failed exec cleanup blocked"
 echo "[PASS] RT-PROC-001 process destroy cleanup blocked"
+echo "[PASS] RT-PROC-002 failed fork cleanup blocked"
 echo "[PASS] RT-EXEC-002 exec FD leak blocked"
 echo "[PASS] findings written to $FINDINGS_LOG"
 echo ""
