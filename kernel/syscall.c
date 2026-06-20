@@ -9,6 +9,7 @@
 #include "scheduler.h"
 #include "elf.h"
 #include "frame.h"
+#include "interrupt_frame.h"
 #include "string.h"
 #include <stdint.h>
 
@@ -19,6 +20,12 @@ void syscall_init(void) {
 }
 
 static int is_ring3(uint32_t caller_cs);
+
+struct syscall_dispatch_control {
+    struct interrupt_frame *frame;
+    uint32_t resume_esp;
+    int switch_requested;
+};
 
 static void brk_rollback_pages(uint32_t start_page, uint32_t end_page) {
     for (uint32_t addr = start_page; addr < end_page; addr += 0x1000) {
@@ -232,8 +239,13 @@ static int is_ring3(uint32_t caller_cs) {
     return (caller_cs & 0x03) == 0x03;
 }
 
-uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uint32_t arg3,
-                         uint32_t caller_cs, uint32_t frame_ptr) {
+static uint32_t syscall_handle(uint32_t syscall_num,
+                               uint32_t arg1,
+                               uint32_t arg2,
+                               uint32_t arg3,
+                               uint32_t caller_cs,
+                               uint32_t frame_ptr,
+                               struct syscall_dispatch_control *control) {
     // Validate syscall number
     if (syscall_num == 0 || syscall_num > SYS_MAX) {
         return SYSCALL_ENOSYS;
@@ -396,6 +408,32 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
                 case SYSCALL_MARK_PROCESS_FAIL:
                     serial_puts("PROCESS_FAIL\n");
                     break;
+#ifdef ENABLE_PROCESS_LIFECYCLE_SELFTEST
+                case SYSCALL_MARK_LIFECYCLE_FORK_PARENT:
+                    serial_puts("LIFECYCLE_FORK_PARENT_OK\n");
+                    break;
+                case SYSCALL_MARK_LIFECYCLE_FORK_CHILD:
+                    serial_puts("LIFECYCLE_FORK_CHILD_OK\n");
+                    break;
+                case SYSCALL_MARK_LIFECYCLE_WAIT_REAP:
+                    if (process_get_count() != 1) {
+                        return SYSCALL_EINVAL;
+                    }
+                    serial_puts("LIFECYCLE_WAIT_REAP_OK\n");
+                    break;
+                case SYSCALL_MARK_LIFECYCLE_ISOLATION:
+                    serial_puts("LIFECYCLE_FORK_ISOLATION_OK\n");
+                    break;
+                case SYSCALL_MARK_LIFECYCLE_EXEC_REPLACED:
+                    serial_puts("LIFECYCLE_EXEC_REPLACEMENT_OK\n");
+                    break;
+                case SYSCALL_MARK_LIFECYCLE_DONE:
+                    serial_puts("LIFECYCLE_OK\n");
+                    break;
+                case SYSCALL_MARK_LIFECYCLE_FAIL:
+                    serial_puts("LIFECYCLE_FAIL\n");
+                    break;
+#endif
 #ifdef ENABLE_REDTEAM_SELFTEST
                 case SYSCALL_MARK_RED_MARKER_BLOCKED:
                     serial_puts("RED_MARKER_FORGERY_BLOCKED\n");
@@ -464,16 +502,15 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
                 return SYSCALL_EINVAL;
             }
 
-            // Mark process as exited with exit code
-            current->exit_code = arg1;
-            current->exited = 1;
-            current->state = PROCESS_ZOMBIE;
+            if (!control || !control->frame) {
+                return SYSCALL_EINVAL;
+            }
 
-            // Schedule next process - this never returns
-            scheduler_schedule();
-
-            // Should never reach here
-            while (1) { asm volatile("hlt"); }
+            process_mark_exit(current, arg1);
+            control->switch_requested = 1;
+            control->resume_esp =
+                scheduler_exit_current((uint32_t)control->frame);
+            return SYSCALL_SUCCESS;
         }
 
         case SYS_WAIT: {
@@ -491,18 +528,36 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
             }
 
             struct process *child = process_find_exited_child(current->pid);
-            if (!child) {
+            if (child) {
+                if (arg1) {
+                    *((uint32_t *)arg1) = child->exit_code;
+                }
+
+                child->waited = 1;
+                uint32_t child_pid = child->pid;
+                process_destroy(child);
+                return child_pid;
+            }
+
+            if (!process_has_child(current->pid)) {
                 return SYSCALL_ECHILD;
             }
 
-            if (arg1) {
-                *((uint32_t *)arg1) = child->exit_code;
+            if (!control || !control->frame) {
+                return SYSCALL_EAGAIN;
             }
 
-            child->waited = 1;
-            uint32_t child_pid = child->pid;
-            process_destroy(child);
-            return child_pid;
+            process_begin_wait(current, arg1);
+            uint32_t resume_esp =
+                scheduler_block_current((uint32_t)control->frame);
+            if (resume_esp == (uint32_t)control->frame) {
+                process_cancel_wait(current);
+                return SYSCALL_EAGAIN;
+            }
+
+            control->switch_requested = 1;
+            control->resume_esp = resume_esp;
+            return SYSCALL_SUCCESS;
         }
 
         case SYS_FORK: {
@@ -510,10 +565,22 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
                 return SYSCALL_EPERM;
             }
 
-            // A correct fork needs a copied interrupt return frame so the
-            // parent returns the child PID and the child returns 0. Keep this
-            // syscall explicit instead of exposing a misleading half-fork.
-            return SYSCALL_ENOSYS;
+            if (!control || !control->frame) {
+                return SYSCALL_EINVAL;
+            }
+
+            struct process *current = process_get_current();
+            if (!current) {
+                return SYSCALL_EINVAL;
+            }
+
+            struct process *child = process_fork(current, control->frame);
+            if (!child) {
+                return SYSCALL_ENOMEM;
+            }
+
+            scheduler_add(child);
+            return child->pid;
         }
 
         case SYS_EXEC: {
@@ -589,11 +656,33 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
             current->cr3 = new_cr3;
             current->heap_start = PROCESS_HEAP_START;
             current->heap_end = PROCESS_HEAP_START;
+            current->eip = info.entry;
+            current->user_stack = (uint32_t *)USER_STACK_TOP;
+            current->interrupt_frame = 1;
             paging_switch_directory(new_cr3);
             paging_destroy_address_space(old_process_cr3);
 
-            *((uint32_t *)frame_ptr) = info.entry;
-            ((uint32_t *)frame_ptr)[3] = USER_STACK_TOP;
+            if (control && control->frame) {
+                struct interrupt_frame *frame = control->frame;
+                frame->edi = 0;
+                frame->esi = 0;
+                frame->ebp = 0;
+                frame->ebx = 0;
+                frame->edx = 0;
+                frame->ecx = 0;
+                frame->gs = 0x23;
+                frame->fs = 0x23;
+                frame->es = 0x23;
+                frame->ds = 0x23;
+                frame->eip = info.entry;
+                frame->cs = 0x1B;
+                frame->eflags = 0x202;
+                frame->user_esp = USER_STACK_TOP;
+                frame->user_ss = 0x23;
+            } else {
+                *((uint32_t *)frame_ptr) = info.entry;
+                ((uint32_t *)frame_ptr)[3] = USER_STACK_TOP;
+            }
             return SYSCALL_SUCCESS;
         }
 
@@ -661,4 +750,48 @@ uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uin
         default:
             return SYSCALL_ENOSYS;
     }
+}
+
+uint32_t syscall_handler(uint32_t syscall_num,
+                         uint32_t arg1,
+                         uint32_t arg2,
+                         uint32_t arg3,
+                         uint32_t caller_cs,
+                         uint32_t frame_ptr) {
+    return syscall_handle(syscall_num, arg1, arg2, arg3,
+                          caller_cs, frame_ptr, NULL);
+}
+
+uint32_t syscall_dispatch(uint32_t frame_esp) {
+    struct interrupt_frame *frame = (struct interrupt_frame *)frame_esp;
+    struct syscall_dispatch_control control;
+    struct process *current;
+    uint32_t result;
+
+    if (!frame) {
+        return 0;
+    }
+
+    control.frame = frame;
+    control.resume_esp = frame_esp;
+    control.switch_requested = 0;
+
+    current = process_get_current();
+    if (current) {
+        current->interrupt_frame = 1;
+    }
+
+    result = syscall_handle(frame->eax,
+                            frame->ebx,
+                            frame->ecx,
+                            frame->edx,
+                            frame->cs,
+                            (uint32_t)&frame->eip,
+                            &control);
+    frame->eax = result;
+
+    if (control.switch_requested) {
+        return control.resume_esp;
+    }
+    return frame_esp;
 }

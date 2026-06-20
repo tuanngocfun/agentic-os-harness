@@ -1,6 +1,7 @@
 #include "paging.h"
 #include "frame.h"
 #include "serial.h"
+#include "string.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -10,10 +11,14 @@
 #define PAGE_DIRECTORY_PHYSICAL 0x00100000
 #define FIRST_PAGE_TABLE_PHYSICAL 0x00101000
 #define IDENTITY_MAPPED_LIMIT 0x00400000
+#define SCRATCH_DIRECTORY_INDEX 1023
+#define SCRATCH_SOURCE_VADDR 0xFFC00000u
+#define SCRATCH_DEST_VADDR   0xFFC01000u
 
 static uint32_t *const page_directory = (uint32_t *)PAGE_DIRECTORY_PHYSICAL;
 static uint32_t *const first_page_table = (uint32_t *)FIRST_PAGE_TABLE_PHYSICAL;
 static uint32_t *active_page_directory = (uint32_t *)PAGE_DIRECTORY_PHYSICAL;
+static uint32_t *kernel_scratch_table;
 
 static inline void load_page_directory(uint32_t *pd) {
     asm volatile("mov %0, %%cr3" : : "r"((uint32_t)pd));
@@ -41,6 +46,27 @@ static uint32_t *allocator_alloc_page_table(void) {
     return table;
 }
 
+static int copy_physical_page(uint32_t source, uint32_t destination) {
+    if (!kernel_scratch_table ||
+        (source & (PAGE_SIZE - 1)) != 0 ||
+        (destination & (PAGE_SIZE - 1)) != 0) {
+        return 0;
+    }
+
+    kernel_scratch_table[0] = source | PAGE_PRESENT | PAGE_WRITABLE;
+    kernel_scratch_table[1] = destination | PAGE_PRESENT | PAGE_WRITABLE;
+    invlpg(SCRATCH_SOURCE_VADDR);
+    invlpg(SCRATCH_DEST_VADDR);
+
+    memcpy((void *)SCRATCH_DEST_VADDR, (const void *)SCRATCH_SOURCE_VADDR, PAGE_SIZE);
+
+    kernel_scratch_table[0] = PAGE_WRITABLE;
+    kernel_scratch_table[1] = PAGE_WRITABLE;
+    invlpg(SCRATCH_SOURCE_VADDR);
+    invlpg(SCRATCH_DEST_VADDR);
+    return 1;
+}
+
 void paging_init(void) {
     for (int i = 0; i < 1024; i++) {
         page_directory[i] = 0x02;
@@ -51,6 +77,11 @@ void paging_init(void) {
     }
 
     page_directory[0] = ((uint32_t)first_page_table) | PAGE_PRESENT | PAGE_WRITABLE;
+    kernel_scratch_table = allocator_alloc_page_table();
+    if (kernel_scratch_table) {
+        page_directory[SCRATCH_DIRECTORY_INDEX] =
+            ((uint32_t)kernel_scratch_table) | PAGE_PRESENT | PAGE_WRITABLE;
+    }
     active_page_directory = page_directory;
 
     load_page_directory(page_directory);
@@ -215,20 +246,14 @@ void paging_destroy_address_space(uint32_t cr3) {
 
         uint32_t *table = (uint32_t *)(directory[i] & 0xFFFFF000);
 
-        if (i == 0) {
-            if (table != first_page_table) {
-                frame_free((uint32_t)table);
-            }
-            directory[i] = 0x02;
-            continue;
-        }
-
-        if (!(directory[i] & PAGE_USER)) {
+        if (table == first_page_table ||
+            (i != 0 && !(directory[i] & PAGE_USER))) {
             continue;
         }
 
         for (int j = 0; j < 1024; j++) {
-            if (table[j] & PAGE_PRESENT) {
+            if ((table[j] & (PAGE_PRESENT | PAGE_USER)) ==
+                (PAGE_PRESENT | PAGE_USER)) {
                 frame_free(table[j] & 0xFFFFF000);
                 table[j] = 0x02;
             }
@@ -245,14 +270,20 @@ static void paging_destroy_cloned_directory(uint32_t *directory) {
         return;
     }
 
-    for (int i = 1; i < 1024; i++) {
+    for (int i = 0; i < 1024; i++) {
         if (!(directory[i] & PAGE_PRESENT)) {
             continue;
         }
 
         uint32_t *table = (uint32_t *)(directory[i] & 0xFFFFF000);
+        if (table == first_page_table ||
+            (i != 0 && !(directory[i] & PAGE_USER))) {
+            continue;
+        }
+
         for (int j = 0; j < 1024; j++) {
-            if (table[j] & PAGE_PRESENT) {
+            if ((table[j] & (PAGE_PRESENT | PAGE_USER)) ==
+                (PAGE_PRESENT | PAGE_USER)) {
                 frame_free(table[j] & 0xFFFFF000);
             }
         }
@@ -266,61 +297,61 @@ static void paging_destroy_cloned_directory(uint32_t *directory) {
 uint32_t paging_clone_directory(uint32_t src_cr3) {
     uint32_t *src_dir = (uint32_t *)(src_cr3 & 0xFFFFF000);
 
-    // Allocate new page directory
+    if (!src_cr3 || !kernel_scratch_table) {
+        return 0;
+    }
+
     uint32_t *new_dir = allocator_alloc_page_table();
     if (!new_dir) {
         return 0;
     }
 
-    // Copy directory entries
     for (int i = 0; i < 1024; i++) {
         if (!(src_dir[i] & PAGE_PRESENT)) {
-            new_dir[i] = 0x02;  // Not present
             continue;
         }
 
-        // For kernel pages (first entry), share the same page table
-        if (i == 0) {
+        /*
+         * Supervisor-only tables are shared. Directory zero is always copied
+         * because process address spaces own their low identity table and may
+         * also contain user mappings used by the teaching selftests.
+         */
+        if (i != 0 && !(src_dir[i] & PAGE_USER)) {
             new_dir[i] = src_dir[i];
             continue;
         }
 
-        // For user pages, clone page tables
         uint32_t *src_table = (uint32_t *)(src_dir[i] & 0xFFFFF000);
-
-        // Allocate new page table
         uint32_t *new_table = allocator_alloc_page_table();
         if (!new_table) {
             paging_destroy_cloned_directory(new_dir);
             return 0;
         }
 
-        // Link immediately so partial-failure cleanup can reclaim the table.
         new_dir[i] = ((uint32_t)new_table & 0xFFFFF000) | (src_dir[i] & 0xFFF);
 
-        // Copy page table entries and physical pages
         for (int j = 0; j < 1024; j++) {
             if (!(src_table[j] & PAGE_PRESENT)) {
-                new_table[j] = 0x02;
                 continue;
             }
 
-            // Allocate new physical page
-            uint32_t new_page_phys = paging_alloc_frame();
+            if (!(src_table[j] & PAGE_USER)) {
+                new_table[j] = src_table[j];
+                continue;
+            }
+
+            uint32_t new_page_phys = frame_alloc();
             if (!new_page_phys) {
                 paging_destroy_cloned_directory(new_dir);
                 return 0;
             }
 
-            // Copy page contents (4096 bytes = 1024 uint32_t)
-            uint32_t *src_page = (uint32_t *)(src_table[j] & 0xFFFFF000);
-            uint32_t *new_page = (uint32_t *)new_page_phys;
-
-            for (int k = 0; k < 1024; k++) {
-                new_page[k] = src_page[k];
+            if (!copy_physical_page(src_table[j] & 0xFFFFF000, new_page_phys)) {
+                frame_free(new_page_phys);
+                paging_destroy_cloned_directory(new_dir);
+                return 0;
             }
 
-            // Set new page table entry with same flags
             new_table[j] = (new_page_phys & 0xFFFFF000) | (src_table[j] & 0xFFF);
         }
     }

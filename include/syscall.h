@@ -6,6 +6,7 @@
 void syscall_init(void);
 uint32_t syscall_handler(uint32_t syscall_num, uint32_t arg1, uint32_t arg2, uint32_t arg3,
                          uint32_t caller_cs, uint32_t frame_ptr);
+uint32_t syscall_dispatch(uint32_t frame_esp);
 
 #define SYS_PUTS    1
 #define SYS_GETCHAR 2
@@ -55,6 +56,7 @@ struct syscall_file_stat {
 #define SYSCALL_EEXIST      ((uint32_t)-10) // File exists
 #define SYSCALL_ECHILD      ((uint32_t)-11) // No child process
 #define SYSCALL_ENOMEM      ((uint32_t)-12) // Out of memory
+#define SYSCALL_EAGAIN      ((uint32_t)-13) // Resource temporarily unavailable
 
 // User-space address range (0x40000000 - 0xBFFFFFFF)
 #define USER_SPACE_START    0x40000000
@@ -95,6 +97,13 @@ struct syscall_file_stat {
 #define SYSCALL_MARK_RED_EXEC_FAILURE_CLEANUP_BLOCKED 33
 #define SYSCALL_MARK_RED_PROCESS_DESTROY_CLEANUP_BLOCKED 34
 #define SYSCALL_MARK_RED_SYSCALL_PRIV_BLOCKED 35
+#define SYSCALL_MARK_LIFECYCLE_FORK_PARENT 36
+#define SYSCALL_MARK_LIFECYCLE_FORK_CHILD 37
+#define SYSCALL_MARK_LIFECYCLE_WAIT_REAP 38
+#define SYSCALL_MARK_LIFECYCLE_ISOLATION 39
+#define SYSCALL_MARK_LIFECYCLE_EXEC_REPLACED 40
+#define SYSCALL_MARK_LIFECYCLE_DONE 41
+#define SYSCALL_MARK_LIFECYCLE_FAIL 42
 
 #define SYSCALL_TEST_MARKER_TOKEN 0x51A7C0DEu
 

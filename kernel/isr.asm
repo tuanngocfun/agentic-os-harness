@@ -5,7 +5,8 @@ extern isr_handler
 extern keyboard_handler
 extern timer_handler
 extern timer_interrupt
-extern syscall_handler
+extern syscall_dispatch
+extern process_complete_context_switch
 extern exception_handler
 
 %macro ISR_NOERRCODE 1
@@ -66,6 +67,7 @@ isr_stub_32:
     add esp, 4
 
     mov esp, eax
+    call process_complete_context_switch
     mov al, 0x20
     out 0x20, al
 
@@ -97,35 +99,53 @@ isr_stub_33:
 
 global isr_stub_128
 isr_stub_128:
-    push ebp
-    mov ebp, esp
     sub esp, 4
+    mov word [esp], ds
+    mov word [esp + 2], 0
+    sub esp, 4
+    mov word [esp], es
+    mov word [esp + 2], 0
+    sub esp, 4
+    mov word [esp], fs
+    mov word [esp + 2], 0
+    sub esp, 4
+    mov word [esp], gs
+    mov word [esp + 2], 0
+    pusha
 
-    push ebx
-    push ecx
-    push edx
-    push esi
-    push edi
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
 
-    lea esi, [ebp + 4]
-    push esi
-    push dword [ebp + 8]
-    push edx
-    push ecx
-    push ebx
+    push esp
+    call syscall_dispatch
+    add esp, 4
+
+    test eax, eax
+    jz .no_runnable_process
+    mov esp, eax
+    call process_complete_context_switch
+
+    popa
     push eax
-    call syscall_handler
-    add esp, 24
 
-    mov [ebp - 4], eax
+    mov ax, [esp + 4]
+    mov gs, ax
+    mov ax, [esp + 8]
+    mov fs, ax
+    mov ax, [esp + 12]
+    mov es, ax
+    mov ax, [esp + 16]
+    mov ds, ax
 
-    pop edi
-    pop esi
-    pop edx
-    pop ecx
-    pop ebx
-
-    mov eax, [ebp - 4]
-    mov esp, ebp
-    pop ebp
+    pop eax
+    add esp, 16
     iretd
+
+.no_runnable_process:
+    cli
+.halt:
+    hlt
+    jmp .halt

@@ -2,6 +2,7 @@
 #include "process.h"
 #include "paging.h"
 #include "serial.h"
+#include "tss.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -26,6 +27,10 @@ static void irq_restore(uint32_t flags) {
 static void switch_address_space(struct process *proc) {
     if (proc && proc->cr3 && proc->cr3 != paging_get_current_directory()) {
         paging_switch_directory(proc->cr3);
+    }
+    if (proc && proc->kernel_stack) {
+        tss_set_kernel_stack((uint32_t)(proc->kernel_stack +
+                             (KERNEL_STACK_SIZE / sizeof(uint32_t))));
     }
 }
 
@@ -165,6 +170,60 @@ uint32_t scheduler_preempt(uint32_t interrupted_esp) {
     }
 
     uint32_t next_esp = current->esp;
+    irq_restore(flags);
+    return next_esp;
+}
+
+static uint32_t scheduler_stop_current_locked(uint32_t interrupted_esp,
+                                              enum process_state stopped_state,
+                                              int resume_if_no_next) {
+    struct process *stopped = current;
+    struct process *next;
+
+    if (!stopped || interrupted_esp == 0) {
+        return 0;
+    }
+
+    stopped->esp = interrupted_esp;
+    stopped->interrupt_frame = 1;
+    stopped->state = stopped_state;
+
+    next = dequeue_best();
+    if (!next || !next->interrupt_frame || next->esp == 0) {
+        if (next) {
+            enqueue(next);
+        }
+        if (resume_if_no_next) {
+            stopped->state = PROCESS_RUNNING;
+            return interrupted_esp;
+        }
+        return 0;
+    }
+
+    age_ready_queue();
+    next->dynamic_priority = next->priority ? next->priority : PROCESS_DEFAULT_PRIORITY;
+    next->state = PROCESS_RUNNING;
+    next->run_count++;
+    current = next;
+    switch_address_space(current);
+    schedule_count++;
+    return next->esp;
+}
+
+uint32_t scheduler_block_current(uint32_t interrupted_esp) {
+    uint32_t flags = irq_save();
+    uint32_t next_esp = scheduler_stop_current_locked(interrupted_esp,
+                                                       PROCESS_BLOCKED,
+                                                       1);
+    irq_restore(flags);
+    return next_esp;
+}
+
+uint32_t scheduler_exit_current(uint32_t interrupted_esp) {
+    uint32_t flags = irq_save();
+    uint32_t next_esp = scheduler_stop_current_locked(interrupted_esp,
+                                                       PROCESS_ZOMBIE,
+                                                       0);
     irq_restore(flags);
     return next_esp;
 }

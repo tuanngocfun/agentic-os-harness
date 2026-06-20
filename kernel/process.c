@@ -1,5 +1,6 @@
 #include "process.h"
 #include "paging.h"
+#include "scheduler.h"
 #include "string.h"
 #include <stdint.h>
 
@@ -79,6 +80,10 @@ struct process *process_create(uint32_t entry_point, int is_user) {
     proc->exit_code = 0;
     proc->exited = 0;
     proc->waited = 0;
+    proc->waiting_for_child = 0;
+    proc->wait_status_ptr = 0;
+    proc->wait_result_status = 0;
+    proc->wait_completion_pending = 0;
 
     // Initialize heap in a high user range below USER_STACK_TOP.
     proc->heap_start = PROCESS_HEAP_START;
@@ -152,6 +157,10 @@ struct process *process_create_preemptive(uint32_t entry_point) {
     proc->exit_code = 0;
     proc->exited = 0;
     proc->waited = 0;
+    proc->waiting_for_child = 0;
+    proc->wait_status_ptr = 0;
+    proc->wait_result_status = 0;
+    proc->wait_completion_pending = 0;
     proc->heap_start = PROCESS_HEAP_START;
     proc->heap_end = PROCESS_HEAP_START;
 
@@ -188,6 +197,70 @@ struct process *process_create_preemptive(uint32_t entry_point) {
     return proc;
 }
 
+struct process *process_fork(struct process *parent,
+                             const struct interrupt_frame *parent_frame) {
+    struct process *child = NULL;
+    struct interrupt_frame *child_frame;
+    uint32_t child_cr3;
+
+    if (!parent || !parent_frame ||
+        (parent_frame->cs & 0x03) != 0x03 ||
+        parent->cr3 == 0 ||
+        process_count >= MAX_PROCESSES) {
+        return NULL;
+    }
+
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (process_table[i].state == PROCESS_DEAD) {
+            child = &process_table[i];
+            break;
+        }
+    }
+    if (!child) {
+        return NULL;
+    }
+
+    memset(child, 0, sizeof(*child));
+    child->kernel_stack = allocate_stack(KERNEL_STACK_SIZE);
+    if (!child->kernel_stack) {
+        return NULL;
+    }
+
+    child_cr3 = paging_clone_directory(parent->cr3);
+    if (!child_cr3) {
+        free_stack(child->kernel_stack);
+        memset(child, 0, sizeof(*child));
+        return NULL;
+    }
+
+    child_frame = (struct interrupt_frame *)
+        (child->kernel_stack + (KERNEL_STACK_SIZE / sizeof(uint32_t)) -
+         (sizeof(struct interrupt_frame) / sizeof(uint32_t)));
+    memcpy(child_frame, parent_frame, sizeof(*child_frame));
+    child_frame->eax = 0;
+    child_frame->eflags |= 0x200;
+
+    child->pid = next_pid++;
+    child->esp = (uint32_t)child_frame;
+    child->ebp = child_frame->ebp;
+    child->eip = child_frame->eip;
+    child->cr3 = child_cr3;
+    child->interrupt_frame = 1;
+    child->priority = parent->priority;
+    child->dynamic_priority = parent->priority;
+    child->run_count = 0;
+    child->state = PROCESS_READY;
+    child->user_stack = (uint32_t *)child_frame->user_esp;
+    child->parent_pid = parent->pid;
+    child->heap_start = parent->heap_start;
+    child->heap_end = parent->heap_end;
+    child->next = NULL;
+
+    parent->interrupt_frame = 1;
+    process_count++;
+    return child;
+}
+
 void process_destroy(struct process *proc) {
     if (!proc || proc->state == PROCESS_DEAD) {
         return;
@@ -214,12 +287,18 @@ void process_destroy(struct process *proc) {
     proc->exit_code = 0;
     proc->exited = 0;
     proc->waited = 0;
+    proc->waiting_for_child = 0;
+    proc->wait_status_ptr = 0;
+    proc->wait_result_status = 0;
+    proc->wait_completion_pending = 0;
     proc->heap_start = 0;
     proc->heap_end = 0;
     proc->user_stack = NULL;
     proc->next = NULL;
 
-    process_count--;
+    if (process_count > 0) {
+        process_count--;
+    }
 }
 
 struct process *process_get_current(void) {
@@ -259,6 +338,109 @@ struct process *process_find_exited_child(uint32_t parent_pid) {
     }
 
     return NULL;
+}
+
+int process_has_child(uint32_t parent_pid) {
+    if (parent_pid == 0) {
+        return 0;
+    }
+
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (process_table[i].state != PROCESS_DEAD &&
+            process_table[i].parent_pid == parent_pid &&
+            !process_table[i].waited) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void process_begin_wait(struct process *proc, uint32_t status_ptr) {
+    if (!proc) {
+        return;
+    }
+    proc->waiting_for_child = 1;
+    proc->wait_status_ptr = status_ptr;
+    proc->wait_result_status = 0;
+    proc->wait_completion_pending = 0;
+}
+
+void process_cancel_wait(struct process *proc) {
+    if (!proc) {
+        return;
+    }
+    proc->waiting_for_child = 0;
+    proc->wait_status_ptr = 0;
+    proc->wait_result_status = 0;
+    proc->wait_completion_pending = 0;
+}
+
+void process_mark_exit(struct process *proc, uint32_t exit_code) {
+    struct process *parent;
+
+    if (!proc || proc->state == PROCESS_DEAD) {
+        return;
+    }
+
+    proc->exit_code = exit_code;
+    proc->exited = 1;
+    proc->state = PROCESS_ZOMBIE;
+
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (process_table[i].state != PROCESS_DEAD &&
+            process_table[i].parent_pid == proc->pid) {
+            process_table[i].parent_pid = 0;
+            if (process_table[i].state == PROCESS_ZOMBIE) {
+                process_table[i].waited = 1;
+            }
+        }
+    }
+
+    parent = process_get_by_pid(proc->parent_pid);
+    if (!parent || parent->state == PROCESS_ZOMBIE) {
+        proc->waited = 1;
+        return;
+    }
+
+    if (parent->state == PROCESS_BLOCKED && parent->waiting_for_child) {
+        parent->wait_result_status = exit_code;
+        parent->wait_completion_pending = 1;
+        parent->waiting_for_child = 0;
+        if (parent->esp) {
+            ((struct interrupt_frame *)parent->esp)->eax = proc->pid;
+        }
+        proc->waited = 1;
+        parent->state = PROCESS_READY;
+        scheduler_add(parent);
+    }
+}
+
+void process_complete_context_switch(void) {
+    struct process *current = process_get_current();
+
+    if (current && current->wait_completion_pending) {
+        if (current->wait_status_ptr) {
+            *((uint32_t *)current->wait_status_ptr) = current->wait_result_status;
+        }
+        current->wait_status_ptr = 0;
+        current->wait_result_status = 0;
+        current->wait_completion_pending = 0;
+    }
+
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        struct process *proc = &process_table[i];
+        struct process *parent;
+
+        if (proc == current || proc->state != PROCESS_ZOMBIE) {
+            continue;
+        }
+
+        parent = process_get_by_pid(proc->parent_pid);
+        if (proc->waited || proc->parent_pid == 0 ||
+            !parent || parent->state == PROCESS_ZOMBIE) {
+            process_destroy(proc);
+        }
+    }
 }
 
 uint32_t process_get_count(void) {
