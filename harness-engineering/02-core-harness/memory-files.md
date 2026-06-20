@@ -32,22 +32,21 @@ agent_docs/
 # Agent Progress Log
 
 ## Current Task
-Build x86 bare metal OS — kernel entry point setup
+Implement per-process file-descriptor ownership on the proven stage-2 OS core
 
 ## Status: IN_PROGRESS
 
 ## Completed Steps
 - [x] Boot sector written (boot.asm) — 2026-05-31 10:00
-- [x] Boot test pass: BOOT_OK COM1 serial output — 2026-05-31 10:15
+- [x] Stage-2 boot test passes `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, and `SHELL_READY`
 - [x] GDT setup (gdt.asm + gdt.c) — 2026-05-31 11:00
 - [x] Boot test pass: KERNEL_INIT_OK — 2026-05-31 11:30
 - [x] IDT setup (idt.asm + idt.c) — 2026-05-31 12:00
 
 ## Next Steps
-- [ ] Kernel entry point (kernel.c: kernel_main)
-- [ ] VGA text mode driver
-- [ ] Serial output driver
-- [ ] Basic shell
+- [ ] Replace global descriptor ownership with per-process descriptor tables
+- [ ] Prove fork inheritance, close-on-exec, invalid descriptor handling, and exit cleanup
+- [ ] Preserve existing VFS, process lifecycle, and red/blue runtime gates
 
 ## Blockers
 - None currently
@@ -72,7 +71,7 @@ Build x86 bare metal OS — kernel entry point setup
 # OS Architecture
 
 ## Overview
-x86 bare metal monolithic kernel, chạy trên QEMU i386.
+x86 bare metal monolithic kernel with a stage-1 boot sector and stage-2 LBA loader, running on QEMU i386.
 
 ## Memory Map
 | Address Range | Usage |
@@ -86,9 +85,9 @@ x86 bare metal monolithic kernel, chạy trên QEMU i386.
 
 ## Boot Sequence
 1. BIOS loads boot sector at 0x7C00
-2. Boot sector: enable A20, load kernel at 0x1000
-3. Boot sector: set up GDT, switch to protected mode
-4. Jump to kernel entry at 0x1000
+2. Stage 1 loads stage 2 from reserved LBAs 1..32
+3. Stage 2 uses BIOS extended reads to load the kernel from LBA 33 at 0x1000
+4. Stage 2 enables A20, enters protected mode, and jumps to the kernel entry
 5. kernel_main(): init IDT, VGA, serial, shell
 
 ## Module Dependencies

@@ -92,6 +92,10 @@ require_grep 'FORCE' "$REPO_ROOT/Makefile"
 require_grep 'stage2_reserved_sectors:[[:space:]]*32' "harness_profile.yaml"
 require_grep 'kernel_lba_start:[[:space:]]*33' "harness_profile.yaml"
 require_grep 'loader:[[:space:]]*"stage2_lba_loader"' "harness_profile.yaml"
+require_grep 'status_last_verified:[[:space:]]*"2026-06-20"' "harness_profile.yaml"
+require_grep 'scope_limits:' "harness_profile.yaml"
+require_grep 'broad_safety_proven:[[:space:]]*false' "harness_profile.yaml"
+require_grep 'production_ready:[[:space:]]*false' "harness_profile.yaml"
 require_grep 'STAGE2_LOAD_SECTORS' "$REPO_ROOT/boot/boot.asm"
 require_grep 'KERNEL_LBA_START' "$REPO_ROOT/boot/stage2.asm"
 require_grep 'STAGE2_OK' "$REPO_ROOT/boot/stage2.asm"
@@ -111,6 +115,17 @@ require_grep 'STAGE2_RESERVED_SECTORS[[:space:]]*=[[:space:]]*32' "$REPO_ROOT/Ma
 require_grep 'KERNEL_LBA_START[[:space:]]*=[[:space:]]*33' "$REPO_ROOT/Makefile"
 require_grep 'stage2[.]bin' "$REPO_ROOT/scripts/boot_test.sh"
 require_grep 'STAGE2_OK' "$REPO_ROOT/scripts/boot_test.sh"
+require_grep 'stage2[.]bin' ".agent/skills/compile-and-run/SKILL.md"
+require_grep 'kernel must begin at LBA 33' ".agent/skills/compile-and-run/SKILL.md"
+require_grep 'STAGE2_OK' ".agent/skills/compile-and-run/SKILL.md"
+require_grep 'stage2[.]bin' ".agent/skills/compile-and-run/scripts/boot_test.sh"
+require_grep 'image_layout' ".agent/skills/compile-and-run/scripts/boot_test.sh"
+require_grep 'for marker in STAGE2_OK BOOT_OK KERNEL_INIT_OK SHELL_READY' ".agent/skills/compile-and-run/scripts/boot_test.sh"
+if grep -q 'phase1_chs_limit' ".agent/skills/compile-and-run/scripts/boot_test.sh"; then
+  fail "compile-and-run evidence still uses retired phase-1 CHS schema"
+else
+  pass "compile-and-run evidence uses current stage-2 image schema"
+fi
 if grep -q 'ENABLE_SYSCALL_ABI_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-syscall' "$REPO_ROOT/Makefile" && grep -q 'SYSCALL_ABI_OK:ARGS_OK' "$REPO_ROOT/scripts/syscall_test.sh"; then
   if grep -q 'ENABLE_SYSCALL_NEGATIVE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'SYS_TEST_MARKER' "$REPO_ROOT/include/syscall.h" && grep -q 'test-syscall-negative' "$REPO_ROOT/Makefile" && grep -q 'SYSCALL_UNMAPPED_POINTER_OK' "$REPO_ROOT/scripts/syscall_negative_test.sh"; then
     if grep -q 'ENABLE_SYSCALL_FILE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'SYS_OPEN' "$REPO_ROOT/include/syscall.h" && grep -q 'test-syscall-file' "$REPO_ROOT/Makefile" && grep -q 'SYSCALL_FILE_OK' "$REPO_ROOT/scripts/syscall_file_test.sh"; then
@@ -339,7 +354,10 @@ if grep -Eq 'scheduler-timer-preemption-proof|process-address-space-isolation-pr
 else
   pass "completed core proof tasks are removed from next work"
 fi
-require_grep 'Do not add filesystem' "13-agent-routing-and-risk/README.md"
+require_grep 'Do not add networking' "13-agent-routing-and-risk/README.md"
+require_grep 'test-process-lifecycle' "11-reference/README.md"
+require_grep 'test-vfs' "11-reference/README.md"
+require_grep 'test-red-team' "11-reference/README.md"
 require_grep 'Claim-aware routing matrix|Claim-aware MiMo routing|Routing Matrix' "13-agent-routing-and-risk/README.md"
 require_grep 'Loop Traps Diagnosed' "13-agent-routing-and-risk/README.md"
 require_grep 'Format Policy' "13-agent-routing-and-risk/README.md"

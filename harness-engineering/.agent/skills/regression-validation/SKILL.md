@@ -19,7 +19,7 @@ Use this skill before marking a harness or boot-path change complete.
 - Root `llms.txt` must exist and reference the core contracts.
 - Executable skill files must exist for compile/run and regression validation.
 - Executable skill files must exist for Git change management.
-- Marker semantics must remain required `BOOT_OK`, `KERNEL_INIT_OK`; optional `SHELL_READY`, `TESTS_PASS`; failure `BOOT_DISK_ERROR`, `KERNEL_PANIC`.
+- Marker semantics must remain required `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`; optional `TESTS_PASS`; failure `BOOT_DISK_ERROR`, `KERNEL_PANIC`.
 - Automated QEMU evidence must use dedicated serial files and exact marker parsing.
 - Git workflow must require status/diff evidence before handoff and explicit user request before stage/commit/push.
 

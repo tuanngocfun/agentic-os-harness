@@ -56,13 +56,11 @@ make clean
 ```
 
 ## Architecture Notes
-- Build artifacts: `build/boot.bin`, `build/boot_config.inc`, `build/kernel.elf`, `build/kernel.bin`, `build/os.img`
-- Boot sequence: BIOS -> `boot.bin` at 0x7C00 -> load raw `kernel.bin` at 0x1000 -> protected mode -> kernel entry
-- Phase-1 loader uses BIOS-reported CHS geometry and currently requires `KERNEL_SECTORS <= 120`; larger kernels require LBA or 2-stage boot.
+- Build artifacts: `build/boot.bin`, `build/stage2.bin`, `build/boot_config.inc`, `build/kernel.elf`, `build/kernel.bin`, `build/os.img`
+- Boot sequence: BIOS -> stage 1 at LBA 0 -> stage 2 in reserved LBAs 1..32 -> kernel at LBA 33 -> protected mode -> kernel entry
 - Kernel entry: `entry.asm` puts `_start` in `.entry`, sets stack, and calls `kernel_main()`
 - Automated tests read COM1 serial output via QEMU `-serial file:build/serial.log -monitor none`; `-serial mon:stdio` is human debug only
-- Core required markers: `BOOT_OK`, `KERNEL_INIT_OK`
-- Current shell phase required marker: `SHELL_READY`
+- Required markers: `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
 - Optional markers: `TESTS_PASS`
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 - Xem chi tiết: `agent_docs/architecture.md`
@@ -84,19 +82,16 @@ make clean
 2. i686-elf-gcc -ffreestanding -fno-pic -fno-pie -Iinclude -MMD -MP -c kernel/kernel.c -o build/kernel.o
 3. i686-elf-gcc -T linker.ld -ffreestanding -nostdlib build/entry.o build/kernel.o ... -lgcc -o build/kernel.elf
 4. i686-elf-objcopy -O binary build/kernel.elf build/kernel.bin
-5. generate build/boot_config.inc from kernel.bin size with `wc -c`; fail if BIOS-geometry CHS phase-1 sector count exceeds 120
-6. nasm -Ibuild/ -f bin boot/boot.asm -o build/boot.bin
-7. verify build/boot.bin is exactly 512 bytes
-8. dd if=build/boot.bin of=build/os.img bs=512 count=1 conv=notrunc
-9. dd if=build/kernel.bin of=build/os.img bs=512 seek=1 conv=notrunc
+5. generate build/boot_config.inc with stage-2 load sectors, kernel LBA 33, and kernel sector count
+6. assemble stage 1 and stage 2; verify stage 1 is 512 bytes and stage 2 fits 32 reserved sectors
+7. place stage 1 at LBA 0, stage 2 at LBA 1, and kernel at LBA 33
 10. qemu-system-i386 -drive file=build/os.img,format=raw -serial file:build/serial.log -monitor none -nic none -display none -no-reboot
 11. parse exact whole-line required markers in build/serial.log -> PASS
 ```
 
 ## Testing Instructions
 - Automated: `make test` -> exit code 0 = boot success
-- Core required serial markers: `BOOT_OK`, `KERNEL_INIT_OK`
-- Current shell phase required serial marker: `SHELL_READY`
+- Required serial markers: `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
 - Optional serial markers: `TESTS_PASS`
 - Current shell phase also runs a runtime shell test that proves `help` through VGA output.
 - Timeout: 30 seconds max
@@ -111,7 +106,7 @@ make clean
 - KHÔNG assemble boot sector bằng `nasm -f elf32` để ghi vào disk image
 - KHÔNG link `boot.bin` hoặc bootloader object vào kernel
 - KHÔNG hardcode stale `KERNEL_SECTORS`; generate or validate it from `kernel.bin`
-- KHÔNG let phase-1 BIOS-geometry CHS loader exceed 120 kernel sectors
+- KHÔNG move the kernel from LBA 33 or exceed the 32-sector stage-2 reservation without updating the image contract and tests
 - KHÔNG override `BUILD_DIR` or `OS_IMG` to unsafe paths; Makefile guards must reject this before `dd` or `clean`
 - KHÔNG vượt 512-byte first-stage boot sector; split into 2-stage loader nếu cần
 - KHÔNG expect BIOS/VGA text xuất hiện trong `build/serial.log`

@@ -6,7 +6,7 @@ Harness engineering documentation for building an x86 bare metal operating syste
 
 ## Goal
 
-> **"OS boot lên thành công"** — bootloader emits `BOOT_OK`, kernel emits `KERNEL_INIT_OK`, then shell work can begin.
+> Build a teaching OS through evidence-scoped milestones. The current implementation proves stage-2 boot through exec/fork/wait lifecycle and known red/blue regressions; it does not prove production safety.
 
 ## Documentation Structure
 
@@ -65,13 +65,14 @@ llms.txt                  ← Root discovery index for agents
 - **AGENTS.md** — Universal guide read by all AI coding agents (< 300 lines)
 - **SKILL.md** — On-demand capability, loaded only when intent matches
 - **Sub-agents** — Role-separated contracts; explicit tool restrictions require platform materialization before enforcement claims
-- **Boot markers** — Core required: `BOOT_OK`, `KERNEL_INIT_OK`; current shell phase also requires `SHELL_READY`; optional: `TESTS_PASS`
+- **Boot markers** — Current required exact lines: `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`; optional: `TESTS_PASS`
 - **QEMU safety** — Runs as unprivileged userspace process; safe when no host disks/devices are passed through
-- **Artifact contract** — `boot.bin` flat boot sector, `boot_config.inc` generated sector count, `kernel.elf` link artifact, `kernel.bin` raw boot artifact, `os.img` boot image, `serial.log`/`qemu.log` test evidence
+- **Artifact contract** — `boot.bin` 512-byte stage 1, `stage2.bin` bounded by 32 reserved sectors, generated `boot_config.inc`, `kernel.elf`, `kernel.bin` at LBA 33, `os.img`, and serial/QEMU evidence logs
 - **Evidence contract** — Automated test uses dedicated serial file, exact marker parser, QEMU status capture, and machine-written evidence
 - **Build-config contract** — `KERNEL_DEFINES` must be tracked through `build/kernel_defines.stamp`; after a selftest build, plain `make all` must rebuild default kernel objects before `make test`.
 - **Git contract** — Inspect status/diff before handoff; stage only explicit paths after approval; never stage deletions or mutate history without explicit user request
 - **Claim contract** — A subsystem is not "working" until `harness_profile.yaml` marks it claimable and a targeted runtime gate proves it.
+- **Limit contract** — Passing all current gates proves only the catalogued behaviors. COW fork, argv/envp, signals, per-process descriptors, SMP safety, persistent storage, networking, and broad security remain unproven.
 - **Format contract** — Markdown for instructions, YAML for `harness_profile.yaml`, JSONL for runtime evidence, HTML only for rendered reports/dashboards.
 
 ## Engineering Rubric
@@ -106,3 +107,5 @@ llms.txt                  ← Root discovery index for agents
 - [x] Phase 9: Reference (11-reference/) — Anti-patterns, glossary, source map
 - [x] Phase 10: Git change management (12-git-change-management/) — Repo state, branch, diff, staging, and handoff gates
 - [x] Phase 11: Agent routing and risk (13-agent-routing-and-risk/, harness_profile.yaml) — Claim-aware MiMo routing and next work order
+- [x] Phase 12: Stage-2 through process lifecycle evidence — current profile and deep gates synchronized
+- [ ] Phase 13: Per-process file-descriptor ownership — current P0 implementation route

@@ -2,7 +2,7 @@
 
 ## Mục đích
 
-Chạy OS trên QEMU, capture COM1 serial output, verify boot markers. Đây là **sensor** chính trong harness.
+Chạy OS trên QEMU, capture COM1 serial output, verify boot markers. Current tests require stage-2 progress before protected-mode and kernel markers.
 
 ## QEMU Safety trên Ubuntu Server
 
@@ -126,7 +126,7 @@ echo ""
 
 PASS=true
 
-for marker in BOOT_OK KERNEL_INIT_OK; do
+for marker in STAGE2_OK BOOT_OK KERNEL_INIT_OK SHELL_READY; do
     if grep -Fxq "$marker" "$SERIAL_CLEAN"; then
         echo "[PASS] $marker found"
     else

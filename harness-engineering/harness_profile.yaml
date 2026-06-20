@@ -1,7 +1,22 @@
-profile_version: "2026-06-02"
+profile_version: "2026-06-20"
 profile_name: "mimo-v2.5pro-os-harness-profile"
 project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_fork_wait_exit_exec_replacement_red_blue"
 source_of_truth: true
+status_last_verified: "2026-06-20"
+
+scope_limits:
+  broad_safety_proven: false
+  production_ready: false
+  unproven:
+    - "copy_on_write_fork"
+    - "waitpid_options"
+    - "argv_envp"
+    - "signals"
+    - "per_process_file_descriptors"
+    - "smp_safe_scheduling"
+    - "persistent_storage"
+    - "networking"
+    - "broad_adversarial_security"
 
 format_policy:
   instructions: "markdown"

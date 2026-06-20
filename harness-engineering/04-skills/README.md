@@ -126,9 +126,9 @@ Mỗi skill phải có:
 **Instructions:**
 1. Classify failure by last marker seen.
 2. If no marker appears, check boot sector format and COM1 init.
-3. If only `BOOT_OK` appears, check kernel load, GDT, stack, and entry jump.
+3. If `STAGE2_OK` appears but `BOOT_OK` does not, check stage-2 LBA reads, GDT, stack, and protected-mode entry.
 4. If `KERNEL_PANIC` appears, read panic context before changing code.
-5. If the kernel grew beyond the declared phase-1 loader profile, or if a partial load is suspected, check both generated sector count and BIOS-reported drive geometry before debugging random crashes.
+5. If a partial load is suspected, verify generated `KERNEL_LBA_START=33`, `KERNEL_SECTORS`, stage-2 bounds, and BIOS extended-read status.
 
 **Verification:**
 - Proposed fix must name the file and invariant it restores.
@@ -225,8 +225,8 @@ Mỗi skill phải có:
 1. Pick exactly one route from `harness_profile.yaml`.
 2. Keep the diff inside that route unless the handoff explicitly explains why a second route is necessary.
 3. Never upgrade a subsystem from scaffold/partial to working without a targeted runtime gate.
-4. Prefer current core-risk tasks: user-mode syscall negative paths, E820/frame lifecycle hardening, and scheduler safety/fairness evidence.
-5. Do not add filesystem, networking, graphics, or more shell breadth before those tasks.
+4. Prefer the current P0: per-process descriptor ownership, fork inheritance, close-on-exec, and cleanup evidence.
+5. Do not add networking, graphics, or more shell breadth before that ownership boundary is proven.
 
 **Verification:**
 - `check_harness_contract.sh` passes.

@@ -2,9 +2,9 @@
 
 ## Mục tiêu dự án
 
-Xây dựng một hệ điều hành **x86 bare metal** viết bằng **C**, chạy trên **QEMU**, với mục tiêu đầu tiên là:
+Xây dựng một hệ điều hành **x86 bare metal** viết bằng **C**, chạy trên **QEMU**, bằng các milestone có bằng chứng.
 
-> **"OS boot lên thành công"** — bootloader emit `BOOT_OK`, kernel emit `KERNEL_INIT_OK`, rồi mới phát triển tiếp shell.
+Current milestone: stage-2 LBA boot, shell, memory/paging, preemptive scheduling, ring-3 syscalls, volatile VFS/SimpleFS, ELF exec, fork/wait/exit/reap, and guest-only red/blue regressions are targeted-runtime proven. This is still a teaching OS, not a broad safety or production-readiness claim.
 
 ## Harness Engineering là gì?
 
@@ -62,6 +62,8 @@ QEMU tương đối an toàn khi chạy bằng user thường với image file r
 01-project-setup/      ← Host/toolchain preflight
 02-core-harness/       ← AGENTS.md, SKILL.md, Sub-Agents, Memory
 03-os-harness-config/  ← OS-specific: boot sequence, build, QEMU, boot markers
+06-validation/         ← Current functional/deep/adversarial evidence contract
+13-agent-routing-and-risk/ ← Current limitations and next implementation route
 12-git-change-management/ ← Git workflow and handoff gates
 ```
 

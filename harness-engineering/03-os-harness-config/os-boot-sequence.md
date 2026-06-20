@@ -1,5 +1,7 @@
 # OS Boot Sequence — x86 Bare Metal
 
+> Current status (2026-06-20): the repository uses a 512-byte stage 1 at LBA 0, a stage-2 BIOS LBA loader in reserved LBAs 1..32, and the kernel at LBA 33. Single-stage CHS material below is retained only as historical teaching context and is not the active implementation contract.
+
 ## Tổng quan
 
 Đây là boot chain cho x86 bare metal OS từ BIOS đến `kernel_main()`. Tài liệu này giả định bootloader đơn giản: BIOS load sector 0, bootloader load raw `kernel.bin` vào `0x1000`, rồi chuyển sang protected mode và gọi kernel entry.

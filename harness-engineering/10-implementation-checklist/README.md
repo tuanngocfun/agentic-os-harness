@@ -24,7 +24,7 @@
 - [ ] Use `-Iinclude -MMD -MP` for kernel C objects.
 - [ ] Guard `BUILD_DIR` and `OS_IMG` before `dd` or `clean`.
 - [ ] Initialize real-mode `DS`, `ES`, `SS`, and `SP` before bootloader memory access.
-- [ ] Enforce the declared phase-1 CHS profile (`KERNEL_SECTORS <= 120` for current BIOS-geometry CHS), or implement LBA/2-stage loading.
+- [x] Enforce the stage-2 LBA profile: 512-byte stage 1, stage 2 within 32 reserved sectors, kernel at LBA 33.
 
 ## Phase 2 — Verify Boot
 
@@ -34,8 +34,7 @@
 - [ ] `make test` uses `-serial file:build/serial.log -monitor none -nic none`.
 - [ ] QEMU status is captured; timeout `124` is the normal liveness pass, and early exit `0` fails unless this is an explicit shutdown test.
 - [ ] Marker parser uses exact whole-line matching after CRLF normalization.
-- [ ] `make test` finds `BOOT_OK`.
-- [ ] `make test` finds `KERNEL_INIT_OK`.
+- [x] `make test` finds `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, and `SHELL_READY`.
 - [ ] No failure marker appears.
 - [ ] Negative marker fixtures fail (`NOT_BOOT_OK`, `BOOT_OK_FAKE`, missing `KERNEL_INIT_OK`, panic after pass markers).
 - [ ] High-risk changes have artifact, marker, drift, and safety evidence.
@@ -47,13 +46,14 @@
 - [ ] Add shell only after boot marker regression passes.
 - [ ] Make `SHELL_READY` required only after shell exists.
 - [ ] Add shell-runtime validation before claiming the shell works.
-- [ ] Keep process/scheduler/syscall/user-mode status as scaffold until runtime tests prove execution.
+- [x] Process lifecycle, scheduler, syscall, user-mode, VFS, and ELF claims have targeted runtime gates.
+- [ ] Add per-process descriptor ownership with fork, exec, and exit semantics.
 
 ## Phase 4 — Regression
 
 - [ ] Run drift searches from `06-validation/README.md`.
 - [ ] Run `make test` and confirm both boot-marker and shell-runtime phases pass.
-- [ ] Confirm no hardcoded stale `KERNEL_SECTORS`.
+- [x] Confirm generated `STAGE2_LOAD_SECTORS`, `KERNEL_LBA_START`, and `KERNEL_SECTORS` match built artifacts.
 - [ ] Confirm risk classification matches changed files.
 - [ ] Confirm machine evidence includes run id, timestamps, command status, artifact sizes/hashes, serial hash, marker verdict, and safety verdict.
 - [ ] Update memory summaries without hand-editing machine evidence verdicts.

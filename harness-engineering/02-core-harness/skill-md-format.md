@@ -104,9 +104,9 @@ Description quyết định skill có được activate hay không.
 ### Tốt (cụ thể, actionable)
 
 ```yaml
-description: "Writes x86 real-mode boot sector in NASM syntax that loads a
-kernel binary at memory address 0x1000 using the documented phase-1 CHS
-limit or a later LBA/2-stage loader profile. Use this
+description: "Writes the minimal x86 real-mode stage-1 sector in NASM syntax,
+loads the reserved stage-2 image, and preserves the stage-2 LBA kernel loader
+contract. Use this
 skill when user asks to create a bootloader, modify boot sector, or start
 a new bare-metal OS project."
 ```
@@ -120,7 +120,7 @@ description: "Boot tools"
 ### Quy tắc viết description
 
 1. Bắt đầu bằng action verb: "Writes", "Configures", "Validates"
-2. Nêu rõ technology and loader profile: "x86 real-mode", "NASM syntax", "phase-1 CHS max 17 sectors" hoặc "LBA/2-stage"
+2. Nêu rõ technology and current loader profile: "x86 real-mode", "NASM syntax", "stage-2 LBA", kernel at LBA 33
 3. Nêu rõ trigger: "Use this skill when user asks to..."
 4. Ngắn gọn nhưng đủ cụ thể (2-3 câu)
 

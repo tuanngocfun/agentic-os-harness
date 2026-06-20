@@ -104,7 +104,7 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Forbidden Next Work
 
-Do not add filesystem claims, networking, graphics mode, or more shell commands without targeted runtime gates. Those would increase apparent progress while leaving severe hidden-bug surface untouched.
+Do not add networking, graphics mode, or more shell commands before per-process descriptor ownership has a targeted runtime gate. Existing filesystem and process-lifecycle claims remain limited to their named tests.
 
 ## External Practice Mapping
 

@@ -118,8 +118,16 @@ Commands:
 - `make test-allocator`
 - `make test-address-space`
 - `make test-syscall-negative`
+- `make test-syscall-file`
+- `make test-elf-loader`
+- `make test-process-syscall`
+- `make test-process-lifecycle`
 - `make test-e820-frame`
+- `make test-ramdisk`
+- `make test-vfs`
 - `make test-scheduler-safety`
+- `make test-red-team`
+- `make test-blue-team`
 - `make test-shell-io`
 - `make clean`
 - `.agent/skills/git-change-management/scripts/git_preflight.sh`
@@ -138,4 +146,4 @@ Runtime evidence:
 - Timer: `scripts/timer_test.sh` proves only that PIT-backed ticks increment during the targeted selftest.
 - Paging: `scripts/paging_test.sh` proves map/unmap, permission-bit bookkeeping, CR0.WP-backed supervisor write fault, and unmap+invlpg fault evidence. `scripts/usermode_test.sh` adds user/supervisor page-fault proof from ring 3. `scripts/address_space_test.sh` proves separate CR3 values and isolated physical frames behind the same virtual address.
 - Memory: `scripts/memory_test.sh` proves usable-memory detection for the configured 512 MiB run. `scripts/e820_test.sh` proves E820 map handoff plus physical frame allocation/free/reuse/exhaustion markers. `scripts/allocator_test.sh` proves the fixed heap allocator's allocation, reuse, free/coalescing accounting, and exhaustion handling.
-- Process/user mode: `scripts/usermode_test.sh` proves process-record setup for a ring-3 entry and controlled user/supervisor page fault. `scripts/address_space_test.sh` proves per-process address-space switching and isolation for kernel-scheduled process records.
+- Process/user mode: `scripts/usermode_test.sh` proves process-record setup for a ring-3 entry and controlled user/supervisor page fault. `scripts/address_space_test.sh` proves per-process address-space switching and isolation. `scripts/process_lifecycle_test.sh` proves the current fork, blocking wait, exit/reap, and exec image-replacement contract; it does not prove COW, argv/envp, signals, or per-process descriptor ownership.

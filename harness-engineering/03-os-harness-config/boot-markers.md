@@ -12,6 +12,7 @@ Quan trọng: `qemu-system-i386 -serial mon:stdio -display none` có thể captu
 
 | Marker | Ý nghĩa | Khi nào in | Bắt buộc? | Channel |
 |---|---|---|---|---|
+| `STAGE2_OK` | Stage 1 loaded stage 2 and stage 2 began executing | At stage-2 entry before kernel loading | Có | COM1 |
 | `BOOT_OK` | Loader path đã tới protected mode sau khi BIOS disk read báo success; chưa chứng minh kernel identity nếu chưa verify magic/header | Sau protected-mode transition, trước jump/call kernel | Có | COM1 |
 | `KERNEL_INIT_OK` | `kernel_main()` chạy và kernel serial driver hoạt động | Đầu `kernel_main()`, ngay sau `serial_init()` | Có | COM1 |
 | `SHELL_READY` | Shell đang chờ input | Sau `shell_init()` | Có trong current shell phase; tùy chọn trước khi có shell | COM1 |
@@ -32,7 +33,7 @@ MARKER_NAME\n
 
 ## Bootloader COM1 Output
 
-`BOOT_OK` phải đi qua COM1 serial nếu automated test cần detect marker này. BIOS/VGA output có thể vẫn dùng cho debug mode, nhưng không được xem là source cho `build/serial.log`.
+`STAGE2_OK` and `BOOT_OK` must go through COM1 serial. BIOS/VGA output can remain for human debugging but is not evidence in `build/serial.log`.
 
 Real-mode setup phải init segment registers trước mọi memory/string/disk access:
 
@@ -257,7 +258,7 @@ tr -d '\r' < "$SERIAL_LOG" > "$SERIAL_CLEAN"
 
 PASS=true
 
-for marker in BOOT_OK KERNEL_INIT_OK; do
+for marker in STAGE2_OK BOOT_OK KERNEL_INIT_OK SHELL_READY; do
     if grep -Fxq "$marker" "$SERIAL_CLEAN"; then
         echo "[PASS] $marker"
     else

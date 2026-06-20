@@ -14,8 +14,8 @@ All platforms should read:
 - `06-validation/README.md`
 
 All platforms must preserve:
-- Artifact contract: `boot.bin`, `boot_config.inc`, `kernel.elf`, `kernel.bin`, `os.img`
-- Marker contract: required `BOOT_OK`, `KERNEL_INIT_OK`
+- Artifact contract: `boot.bin`, `stage2.bin`, `boot_config.inc`, `kernel.elf`, `kernel.bin`, `os.img`
+- Marker contract: required `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`
 - Safety contract: no root QEMU, no host disk/device passthrough
 - Evidence contract: automated tests use dedicated serial file, exact marker parsing, and machine-written evidence
 - Git contract: inspect status/diff before handoff; no staging/commit/push/history/remote mutation without explicit user request

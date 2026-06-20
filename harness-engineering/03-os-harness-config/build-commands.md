@@ -1,5 +1,7 @@
 # Build Commands — Cross-Compile, Link, Image Creation
 
+> Current status (2026-06-20): the authoritative Makefile builds `stage2.bin`, reserves 32 sectors for stage 2, and places `kernel.bin` at LBA 33. The phase-1 CHS excerpt below is legacy teaching material, not the repository command contract.
+
 ## Toolchain
 
 ### Cross-Compiler (BẮT BUỘC)

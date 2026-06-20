@@ -45,11 +45,11 @@ IN_PROGRESS | BLOCKED | COMPLETE
 ## Boot Contract
 - `boot.bin`: flat 512-byte sector at image sector 0
 - `kernel.elf`: linked ELF at 0x1000
-- `kernel.bin`: raw kernel copied to image sector 1+
+- `stage2.bin`: LBA-capable loader copied into reserved sectors 1..32
+- `kernel.bin`: raw kernel copied starting at LBA 33
 
 ## Marker Contract
-- Required: BOOT_OK, KERNEL_INIT_OK
-- Current shell phase required: SHELL_READY
+- Required: STAGE2_OK, BOOT_OK, KERNEL_INIT_OK, SHELL_READY
 - Optional: TESTS_PASS
 - Failure: BOOT_DISK_ERROR, KERNEL_PANIC
 
@@ -92,7 +92,7 @@ Compatibility impact:
 Human summaries may reference evidence, but machine verdicts should be append-only JSONL written by scripts. Do not let writer agents hand-edit pass/fail results.
 
 ```jsonl
-{"run_id":"<timestamp>-<short-random>","task":"<task>","git":{"repo_root":"<path>","branch":"<branch>","commit":"<hash-or-none>","status_short":"clean|dirty","diff_stat":"<summary>","tracked_build_artifacts":false,"staged_paths":[],"deleted_paths_staged":[]},"started_at":"<iso8601>","ended_at":"<iso8601>","commands":[{"cmd":"make all","status":0},{"cmd":"make test","status":0}],"artifacts":[{"path":"build/boot.bin","bytes":512,"sha256":"<hash>"}],"qemu_status":124,"serial_log_sha256":"<hash>","markers":{"BOOT_OK":true,"KERNEL_INIT_OK":true,"SHELL_READY":true,"BOOT_DISK_ERROR":false,"KERNEL_PANIC":false},"sector_count":{"kernel_sectors":18,"phase1_chs_limit":120,"ok":true},"safety":{"root_qemu":false,"host_disk_passthrough":false,"monitor_none":true,"nic_none":true},"risk":"high","verdict":"pass"}
+{"run_id":"<timestamp>-<short-random>","task":"<task>","git":{"repo_root":"<path>","branch":"<branch>","commit":"<hash-or-none>","status_short":"clean|dirty","diff_stat":"<summary>","tracked_build_artifacts":false,"staged_paths":[],"deleted_paths_staged":[]},"started_at":"<iso8601>","ended_at":"<iso8601>","commands":[{"cmd":"make all","status":0},{"cmd":"make test","status":0}],"artifacts":[{"path":"build/boot.bin","bytes":512,"sha256":"<hash>"},{"path":"build/stage2.bin","bytes":"<bytes>","sha256":"<hash>"},{"path":"build/kernel.bin","bytes":"<bytes>","sha256":"<hash>"}],"qemu_status":124,"serial_log_sha256":"<hash>","markers":{"STAGE2_OK":true,"BOOT_OK":true,"KERNEL_INIT_OK":true,"SHELL_READY":true,"BOOT_DISK_ERROR":false,"KERNEL_PANIC":false},"image_layout":{"stage2_reserved_sectors":32,"kernel_lba_start":33,"kernel_sectors":"<count>","ok":true},"safety":{"root_qemu":false,"host_disk_passthrough":false,"monitor_none":true,"nic_none":true},"risk":"high","verdict":"pass"}
 ```
 
 Recommended files:

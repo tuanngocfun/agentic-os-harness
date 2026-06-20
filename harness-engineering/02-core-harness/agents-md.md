@@ -41,7 +41,7 @@
 ## Setup Commands
 ```bash
 make toolchain        # Build cross-compiler (nếu cần)
-make all              # Compile kernel + bootloader
+make all              # Compile stage 1, stage 2, kernel, and image
 make run              # Chạy trên QEMU
 make test             # Chạy boot test
 make clean            # Xóa build artifacts
@@ -49,15 +49,14 @@ make clean            # Xóa build artifacts
 
 ## Architecture Notes
 - Pattern: <monolithic kernel / microkernel>
-- Boot sequence: boot.asm → gdt → idt → kernel_main()
+- Boot sequence: boot.asm (stage 1) -> stage2.asm (LBA loader) -> protected mode -> kernel_main()
 - Key modules: <mô tả ngắn từng module>
 - Xem chi tiết: agent_docs/architecture.md
 
 ## Testing Instructions
 - Xem chi tiết: agent_docs/running_tests.md
 - Boot test: `make test` -> exit code 0 = pass
-- Core required serial output markers: exact lines `BOOT_OK`, `KERNEL_INIT_OK`
-- Current shell phase also requires `SHELL_READY` and a shell-runtime test when the shell is implemented.
+- Required serial output markers: exact lines `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, `SHELL_READY`.
 - Optional serial output markers: TESTS_PASS
 
 ## Things to Avoid
@@ -67,7 +66,7 @@ make clean            # Xóa build artifacts
 - KHÔNG link bootloader vào kernel
 - KHÔNG expect VGA/BIOS output xuất hiện trong serial log
 - KHÔNG thêm dependency mới mà không update file này
-- KHÔNG modify boot.asm sau khi boot test pass
+- KHÔNG change the stage-1/stage-2 image layout without updating Makefile assertions and boot tests
 
 ## Available Skills
 - `write-bootloader` — khi cần viết/sửa boot sector
