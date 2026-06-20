@@ -1,6 +1,6 @@
 profile_version: "2026-06-02"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_prep_process_syscall_elf_entry_red_blue_fuzz_expanded"
+project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_fork_wait_exit_exec_replacement_red_blue"
 source_of_truth: true
 
 format_policy:
@@ -23,6 +23,7 @@ security_posture:
     - "RT-ELF-001"
     - "RT-EXEC-003"
     - "RT-PROC-001"
+    - "RT-PROC-002"
     - "RT-SYSCALL-001"
     - "RT-SCHED-001"
 
@@ -65,7 +66,7 @@ claim_status:
   paging: "claimable_with_map_fault_user_supervisor_and_address_space_tests"
   syscall: "claimable_with_syscall_ring3_negative_and_file_io_tests"
   exception_panic: "claimable_with_exception_test_suite"
-  process: "claimable_with_user_process_record_ring3_entry_address_space_and_process_syscall_elf_entry_tests"
+  process: "claimable_with_ring3_fork_wait_exit_reap_exec_replacement_tests"
   scheduler: "claimable_with_scheduler_preemption_priority_fairness_tests"
   user_mode: "claimable_with_usermode_ring3_test"
   block_device: "claimable_with_ramdisk_runtime_test"
@@ -100,6 +101,7 @@ deep_gates:
   - "syscall_file_io_runtime_test"
   - "elf_loader_prep_runtime_test"
   - "process_syscall_elf_entry_transfer_test"
+  - "process_fork_wait_exit_reap_exec_replacement_test"
   - "scheduler_priority_fairness_safety_test"
   - "ramdisk_block_device_runtime_test"
   - "vfs_simplefs_runtime_test"
@@ -190,9 +192,9 @@ routes:
       - "check_harness_contract"
 
 mimo_next_tasks:
-  - id: "fork-wait-exec-replacement-hardening"
+  - id: "per-process-fd-lifecycle"
     priority: "P0"
-    success: "Implement true fork child-return semantics, zombie wait/reap coverage, and exec address-space replacement with targeted runtime gates."
+    success: "Replace the global VFS descriptor table with per-process descriptor ownership, define fork inheritance and close-on-exec behavior, and prove cleanup through targeted runtime gates."
   - id: "red-blue-fuzz-continuation"
     priority: "P1"
     success: "Keep expanding guest-only syscall, scheduler, paging, and ELF fuzz probes after each new feature lands."

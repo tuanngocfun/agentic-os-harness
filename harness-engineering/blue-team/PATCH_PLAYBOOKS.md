@@ -44,6 +44,7 @@ Implemented control:
 Verification gate:
 - `make test-red-team` proves the old heap sentinel is not accepted as a mapped user pointer after exec.
 - `make test-process-syscall` must continue to prove ELF entry transfer.
+- `make test-process-lifecycle` proves exec replaces the old mappings and resets heap state after fork/wait lifecycle activity.
 
 Next hardening:
 - Add argv/envp setup, per-process fd tables, and stricter lifecycle ownership once process management grows beyond the current single-running-process tests.
@@ -142,7 +143,7 @@ Verification gate:
 - `make test-process-syscall` must still prove process syscall and exec-entry behavior.
 
 Next hardening:
-- Add real zombie reaping and exit-path cleanup gates once blocked `wait` and process-parent ownership become first-class behavior.
+- Add orphan/reparenting stress, `waitpid` options, and process-table exhaustion recovery now that blocking wait and zombie reaping have a runtime gate.
 
 ## RT-ELF-001
 
@@ -160,3 +161,19 @@ Verification gate:
 
 Next hardening:
 - Fuzz ELF headers, segment counts, range boundaries, and alignment combinations.
+
+## RT-PROC-002
+
+Goal: make fork failure atomic across process, kernel-stack, page-table, and user-frame ownership.
+
+Implemented control:
+- `paging_clone_directory()` unwinds every user frame and page table allocated before a clone failure.
+- `process_fork()` releases the child kernel stack and process slot when address-space cloning fails.
+- The red probe exhausts low frames, attempts fork, releases pressure, and requires exact frame and process-count recovery.
+
+Verification gate:
+- `make test-red-team` proves allocation-pressure fork failure does not leak resources or create a child.
+- `make test-process-lifecycle` must continue to prove a successful fork gives parent/child return values, isolated memory, blocking wait, exit, and reap.
+
+Next hardening:
+- Add fault-injection points for each fork allocation step and repeated fork/exit/wait stress across process-table exhaustion.

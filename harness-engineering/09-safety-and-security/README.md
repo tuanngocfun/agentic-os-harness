@@ -41,6 +41,21 @@ Require explicit human approval before:
 - Changing system networking for QEMU.
 - Running commands with `sudo`.
 
+## External Artifact Supply-Chain Policy
+
+Prefer distribution package managers and existing pinned toolchains. When a required compiler, emulator firmware, script, archive, or binary must come directly from the Internet:
+
+- Pin an exact release or immutable commit; never follow an unversioned “latest” URL.
+- Fetch only over HTTPS from the upstream project or its documented release channel.
+- Verify the upstream signature or published SHA-256 checksum when available.
+- For unsigned raw artifacts, compare bytes or SHA-256 hashes from two independently hosted official mirrors before use.
+- Never execute `curl | sh`, `wget | sh`, or an unreviewed installer with elevated privileges.
+- Keep downloads in a temporary quarantine directory, inspect archive members and file types, and run them with least privilege and no host passthrough.
+- Record source URLs, release tag, and hashes in the validation handoff.
+- Use malware scanning when available, but treat it as supplementary evidence; a clean scan does not prove an artifact is trustworthy.
+
+If provenance or integrity cannot be established, stop and request human approval instead of installing or executing the artifact.
+
 ## Failure Containment
 
 - Use `timeout` in automated tests.
@@ -76,5 +91,6 @@ Current blocked findings:
 - `RT-ELF-001`: overlapping ELF load page ranges are rejected before partial user mappings are created.
 - `RT-EXEC-003`: failed exec attempts do not leak address-space frames.
 - `RT-PROC-001`: destroying a process with a private address space reclaims owned frames.
+- `RT-PROC-002`: failed fork cloning under low-frame exhaustion rolls back child resources and accounting.
 
 Patch planning and next hardening work live in `harness-engineering/blue-team/PATCH_PLAYBOOKS.md`.

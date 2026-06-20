@@ -63,6 +63,7 @@ require_file "../scripts/address_space_test.sh"
 require_file "../scripts/syscall_negative_test.sh"
 require_file "../scripts/syscall_file_test.sh"
 require_file "../scripts/elf_loader_test.sh"
+require_file "../scripts/process_lifecycle_test.sh"
 require_file "../scripts/e820_test.sh"
 require_file "../scripts/ramdisk_test.sh"
 require_file "../scripts/vfs_test.sh"
@@ -94,7 +95,7 @@ require_grep 'loader:[[:space:]]*"stage2_lba_loader"' "harness_profile.yaml"
 require_grep 'STAGE2_LOAD_SECTORS' "$REPO_ROOT/boot/boot.asm"
 require_grep 'KERNEL_LBA_START' "$REPO_ROOT/boot/stage2.asm"
 require_grep 'STAGE2_OK' "$REPO_ROOT/boot/stage2.asm"
-require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_prep_process_syscall_elf_entry_red_blue_fuzz_expanded"' "harness_profile.yaml"
+require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_fork_wait_exit_exec_replacement_red_blue"' "harness_profile.yaml"
 require_grep 'format_policy:' "harness_profile.yaml"
 require_grep 'runtime_evidence:[[:space:]]*"jsonl"' "harness_profile.yaml"
 require_grep 'security_posture:' "harness_profile.yaml"
@@ -204,7 +205,14 @@ else
 fi
 if grep -q 'ENABLE_USERMODE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-usermode' "$REPO_ROOT/Makefile" && grep -q 'USERMODE_RING3_OK' "$REPO_ROOT/scripts/usermode_test.sh" && rg -q 'enter_user_mode|switch_to_usermode' "$REPO_ROOT/kernel" "$REPO_ROOT/include" 2>/dev/null; then
   require_grep 'user_mode:[[:space:]]*"claimable_with_usermode_ring3_test"' "harness_profile.yaml"
-  if grep -q 'ENABLE_PROCESS_SYSCALL_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-process-syscall' "$REPO_ROOT/Makefile" && grep -q 'PROCESS_OK' "$REPO_ROOT/scripts/process_syscall_test.sh"; then
+  if grep -q 'ENABLE_PROCESS_LIFECYCLE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-process-lifecycle' "$REPO_ROOT/Makefile" && grep -q 'LIFECYCLE_OK' "$REPO_ROOT/scripts/process_lifecycle_test.sh"; then
+    require_grep 'process:[[:space:]]*"claimable_with_ring3_fork_wait_exit_reap_exec_replacement_tests"' "harness_profile.yaml"
+    require_grep 'test-deep:.*test-process-syscall.*test-process-lifecycle' "$REPO_ROOT/Makefile"
+    require_grep 'process_fork' "$REPO_ROOT/kernel/process.c"
+    require_grep 'scheduler_block_current' "$REPO_ROOT/kernel/scheduler.c"
+    require_grep 'syscall_dispatch' "$REPO_ROOT/kernel/syscall.c"
+    require_grep 'paging_clone_directory' "$REPO_ROOT/kernel/paging.c"
+  elif grep -q 'ENABLE_PROCESS_SYSCALL_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-process-syscall' "$REPO_ROOT/Makefile" && grep -q 'PROCESS_OK' "$REPO_ROOT/scripts/process_syscall_test.sh"; then
     require_grep 'process:[[:space:]]*"claimable_with_user_process_record_ring3_entry_address_space_and_process_syscall_elf_entry_tests"' "harness_profile.yaml"
   elif grep -q 'ENABLE_ADDRESS_SPACE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-address-space' "$REPO_ROOT/Makefile" && grep -q 'ADDRSPACE_ISOLATION_OK' "$REPO_ROOT/scripts/address_space_test.sh"; then
     require_grep 'process:[[:space:]]*"claimable_with_user_process_record_ring3_entry_and_address_space_isolation_tests"' "harness_profile.yaml"
@@ -234,6 +242,7 @@ if grep -q 'ENABLE_REDTEAM_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'te
   require_grep 'RT-ELF-001' "red-team/ATTACK_CATALOG.md"
   require_grep 'RT-EXEC-003' "red-team/ATTACK_CATALOG.md"
   require_grep 'RT-PROC-001' "red-team/ATTACK_CATALOG.md"
+  require_grep 'RT-PROC-002' "red-team/ATTACK_CATALOG.md"
   require_grep 'RT-SYSCALL-001' "red-team/ATTACK_CATALOG.md"
   require_grep 'RT-SCHED-001' "red-team/ATTACK_CATALOG.md"
   require_grep 'RT-HARNESS-001' "blue-team/CURRENT_FINDINGS.md"
@@ -244,6 +253,7 @@ if grep -q 'ENABLE_REDTEAM_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'te
   require_grep 'RT-ELF-001' "blue-team/CURRENT_FINDINGS.md"
   require_grep 'RT-EXEC-003' "blue-team/CURRENT_FINDINGS.md"
   require_grep 'RT-PROC-001' "blue-team/CURRENT_FINDINGS.md"
+  require_grep 'RT-PROC-002' "blue-team/CURRENT_FINDINGS.md"
   require_grep 'RT-SYSCALL-001' "blue-team/CURRENT_FINDINGS.md"
   require_grep 'RT-SCHED-001' "blue-team/CURRENT_FINDINGS.md"
   require_grep 'RT-HARNESS-001' "blue-team/PATCH_PLAYBOOKS.md"
@@ -254,6 +264,7 @@ if grep -q 'ENABLE_REDTEAM_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'te
   require_grep 'RT-ELF-001' "blue-team/PATCH_PLAYBOOKS.md"
   require_grep 'RT-EXEC-003' "blue-team/PATCH_PLAYBOOKS.md"
   require_grep 'RT-PROC-001' "blue-team/PATCH_PLAYBOOKS.md"
+  require_grep 'RT-PROC-002' "blue-team/PATCH_PLAYBOOKS.md"
   require_grep 'RT-SYSCALL-001' "blue-team/PATCH_PLAYBOOKS.md"
   require_grep 'RT-SCHED-001' "blue-team/PATCH_PLAYBOOKS.md"
   require_grep 'RT-HARNESS-001' "$REPO_ROOT/scripts/red_team_test.sh"
@@ -264,6 +275,7 @@ if grep -q 'ENABLE_REDTEAM_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'te
   require_grep 'RT-ELF-001' "$REPO_ROOT/scripts/red_team_test.sh"
   require_grep 'RT-EXEC-003' "$REPO_ROOT/scripts/red_team_test.sh"
   require_grep 'RT-PROC-001' "$REPO_ROOT/scripts/red_team_test.sh"
+  require_grep 'RT-PROC-002' "$REPO_ROOT/scripts/red_team_test.sh"
   require_grep 'RT-SYSCALL-001' "$REPO_ROOT/scripts/red_team_test.sh"
   require_grep 'RT-SCHED-001' "$REPO_ROOT/scripts/red_team_test.sh"
   require_grep 'RED_MARKER_FORGERY_BLOCKED' "$REPO_ROOT/scripts/red_team_test.sh"
@@ -276,6 +288,7 @@ if grep -q 'ENABLE_REDTEAM_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'te
   require_grep 'RED_ELF_OVERLAP_BLOCKED' "$REPO_ROOT/scripts/red_team_test.sh"
   require_grep 'RED_EXEC_FAILURE_CLEANUP_BLOCKED' "$REPO_ROOT/scripts/red_team_test.sh"
   require_grep 'RED_PROCESS_DESTROY_CLEANUP_BLOCKED' "$REPO_ROOT/scripts/red_team_test.sh"
+  require_grep 'RED_FORK_FAILURE_CLEANUP_BLOCKED' "$REPO_ROOT/scripts/red_team_test.sh"
   require_grep 'blocked_by_blue_team' "$REPO_ROOT/scripts/red_team_test.sh"
   require_grep 'RED_MARKER_FORGERY_BLOCKED' "red-team/README.md"
   require_grep 'RED_SYSCALL_PRIVILEGE_BLOCKED' "red-team/README.md"
@@ -287,6 +300,7 @@ if grep -q 'ENABLE_REDTEAM_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'te
   require_grep 'RED_ELF_OVERLAP_BLOCKED' "red-team/README.md"
   require_grep 'RED_EXEC_FAILURE_CLEANUP_BLOCKED' "red-team/README.md"
   require_grep 'RED_PROCESS_DESTROY_CLEANUP_BLOCKED' "red-team/README.md"
+  require_grep 'RED_FORK_FAILURE_CLEANUP_BLOCKED' "red-team/README.md"
   require_grep 'RED_DEFENSES_OK' "red-team/README.md"
   require_grep 'blocked by current blue control' "blue-team/CURRENT_FINDINGS.md"
   require_grep 'RT-FS-002' "harness_profile.yaml"
@@ -294,6 +308,7 @@ if grep -q 'ENABLE_REDTEAM_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'te
   require_grep 'RT-ELF-001' "harness_profile.yaml"
   require_grep 'RT-EXEC-003' "harness_profile.yaml"
   require_grep 'RT-PROC-001' "harness_profile.yaml"
+  require_grep 'RT-PROC-002' "harness_profile.yaml"
   require_grep 'RT-SYSCALL-001' "harness_profile.yaml"
   require_grep 'RT-SCHED-001' "harness_profile.yaml"
   require_grep 'SYS_TEST_ABI' "$REPO_ROOT/kernel/syscall.c"
@@ -319,7 +334,7 @@ else
 fi
 require_grep '^test-blue-team:[[:space:]]*test-red-team' "$REPO_ROOT/Makefile"
 require_grep 'pending_deep_gates:[[:space:]]*\[\]' "harness_profile.yaml"
-if grep -Eq 'scheduler-timer-preemption-proof|process-address-space-isolation-proof|memory-allocator-proof|paging-per-process-address-space-proof|syscall-user-mode-negative-path-proof|memory-map-and-frame-lifecycle-proof|scheduler-safety-proof' "harness_profile.yaml"; then
+if grep -Eq 'scheduler-timer-preemption-proof|process-address-space-isolation-proof|memory-allocator-proof|paging-per-process-address-space-proof|syscall-user-mode-negative-path-proof|memory-map-and-frame-lifecycle-proof|scheduler-safety-proof|fork-wait-exec-replacement-hardening' "harness_profile.yaml"; then
   fail "completed P0/P1/P2 proof tasks are still listed as next work"
 else
   pass "completed core proof tasks are removed from next work"
@@ -332,6 +347,9 @@ require_grep 'Default Gates vs Deep Gates' "06-validation/README.md"
 require_grep 'Format Contract' "06-validation/README.md"
 require_grep 'harness_profile[.]yaml' "AGENTS.md"
 require_grep 'harness_profile[.]yaml' "06-validation/README.md"
+require_grep 'package manager' "09-safety-and-security/README.md"
+require_grep 'SHA-256' "09-safety-and-security/README.md"
+require_grep 'curl[[:space:]]*\\|[[:space:]]*sh' "09-safety-and-security/README.md"
 
 if grep -Eq 'scheduler:[[:space:]]*".*(timer|preempt)' "harness_profile.yaml"; then
   if grep -q 'timer_interrupt' "$REPO_ROOT/kernel/timer.c" && grep -q 'scheduler_preempt' "$REPO_ROOT/kernel/scheduler.c" && grep -q 'PREEMPT_OK' "$REPO_ROOT/scripts/timer_preemption_test.sh"; then

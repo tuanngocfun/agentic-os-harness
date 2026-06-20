@@ -109,3 +109,14 @@ Status: blocked by current blue control; keep regression probe active.
 - Verification gate: `make test-red-team`
 
 Status: blocked by current blue control; keep regression probe active.
+
+## RT-PROC-002
+
+- Impact: a fork failure during address-space cloning can leak frames, kernel stacks, or process slots and become a guest-triggered resource exhaustion path.
+- Attack/defense gate: `make test-red-team`
+- Expected marker: `RED_FORK_FAILURE_CLEANUP_BLOCKED`
+- Machine evidence: `build/red-team/findings.jsonl`
+- Blue control: fork creation is transactional; paging clone unwinds partially allocated user frames and page tables, while process creation releases the child stack and record when cloning fails.
+- Verification gate: `make test-red-team`
+
+Status: blocked by current blue control; keep regression probe active.

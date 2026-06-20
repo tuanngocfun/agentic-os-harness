@@ -101,3 +101,13 @@ The current OS still has a global VFS descriptor table, so an old process image 
 - Finding log ID: `RT-ELF-001`
 
 Malformed ELF files can describe multiple `PT_LOAD` ranges that map the same user page. Without whole-image overlap validation, a loader can map the first segment, reject the second, and leave partial user mappings behind after a failed load. The current probe writes an overlapping-segment ELF, expects `ELF_EINVAL`, and verifies the target user page was not mapped.
+
+## RT-PROC-002: Fork Clone Failure Cleanup
+
+- Subsystem: process fork / paging clone rollback
+- Severity: high
+- Attack/defense gate: `make test-red-team`
+- Evidence marker: `RED_FORK_FAILURE_CLEANUP_BLOCKED`
+- Finding log ID: `RT-PROC-002`
+
+Fork clones a process record, kernel stack, page directory, page tables, and user frames. A mid-clone allocation failure can leak any partially owned resource or leave a phantom child. The current probe exhausts the low-frame pool, attempts `process_fork()`, requires failure, then verifies both frame accounting and process count return to their exact baselines.

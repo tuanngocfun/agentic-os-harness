@@ -23,15 +23,15 @@ Proven now:
 - Syscall negative-path selftest proves ring-3 valid syscall execution and controlled errors for invalid syscall numbers, kernel-space pointers, and unmapped user pointers.
 - Memory selftest proves E820-backed usable-memory detection for the configured 512 MiB QEMU run. E820/frame selftest proves E820 map handoff and physical frame allocation/free/reuse/exhaustion. Allocator selftest proves fixed-heap `kmalloc`/`kfree` allocation, reuse, free/coalescing accounting, and exhaustion.
 - User-mode selftest proves a ring-3 transition and controlled user/supervisor page fault. It does not prove full userland.
-- VFS and SimpleFS selftests prove a volatile root-only flat filesystem on ramdisk. File syscall selftest proves VFS-backed ring-3 open/read/write/close/stat. ELF loader prep selftest proves VFS-backed ELF32/i386 header validation, PT_LOAD materialization into user-mapped pages, BSS zero-fill, and negative paths. Process syscall selftest proves ring-3 `getpid`, dynamic `brk` query/grow/read-write/shrink, no-child `wait`, and `exec` transfer into a VFS-backed ELF entry.
-- Red/blue adversarial gate proves the current known attack catalog is blocked, including marker forgery, test-only syscall marker abuse, exec residual mapping and fd leaks, failed exec cleanup, process-destroy address-space cleanup, SimpleFS exhaustion/namespace abuse, preemptive-yield mixing, and overlapping ELF segment rejection. This corrects the security posture without claiming broad hardening.
+- VFS and SimpleFS selftests prove a volatile root-only flat filesystem on ramdisk. File syscall selftest proves VFS-backed ring-3 open/read/write/close/stat. ELF loader prep selftest proves VFS-backed ELF32/i386 header validation, PT_LOAD materialization into user-mapped pages, BSS zero-fill, and negative paths. Process syscall selftest proves ring-3 `getpid`, dynamic `brk`, and VFS-backed exec entry. Process lifecycle selftest proves true fork parent/child return, private copied memory, blocking wait, child exit status, zombie reap, and exec image replacement.
+- Red/blue adversarial gate proves the current known attack catalog is blocked, including marker forgery, test-only syscall marker abuse, exec residual mapping and fd leaks, failed exec cleanup, process-destroy and fork-failure cleanup, SimpleFS exhaustion/namespace abuse, preemptive-yield mixing, and overlapping ELF segment rejection. This corrects the security posture without claiming broad hardening.
 
 Not proven:
 - Production-grade virtual memory or dynamic heap growth from arbitrary frame runs.
 - Full userland syscall ABI coverage beyond the proven syscall set and negative paths.
-- True `fork` child-return semantics, blocking `wait`, or full exec address-space replacement with argv/envp.
+- Copy-on-write fork, `waitpid` options, argv/envp, signals, or per-process file-descriptor ownership.
 - SMP-safe scheduling or production-grade synchronization.
-- ELF ring-3 process launch/execution, persistent storage, networking, graphics, and production-grade userland.
+- Persistent storage, networking, graphics, dynamic linking, and production-grade userland.
 - Broad adversarial hardening beyond the currently blocked red-team catalog.
 
 ## Loop Traps Diagnosed
@@ -77,8 +77,9 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | `memory_detection` | BIOS E820 detection, memory summaries, targeted memory/frame tests | `make test-memory` proves the configured QEMU usable-memory marker; `make test-e820-frame` proves E820 handoff and frame lifecycle; `make test-allocator` proves fixed-heap behavior | Production-grade heap growth or full VM memory-zone policy |
 | `user_mode` | GDT/TSS selectors, user-mode entry, syscall/exception boundary | `make test-usermode` proves ring-3 transition and supervisor-page fault from user mode; address-space isolation is separately proven by `make test-address-space` | Userland ABI completeness or syscall negative-path coverage |
 | `syscall_negative` | syscall validation, page-aware user pointer checks, ring-3 syscall harness | `make test-syscall-negative` proves invalid numbers, kernel pointers, unmapped user pointers, and valid ring-3 syscall marker path | Complete POSIX-style syscall ABI or resource-limit policy |
-| `elf_loader_prep` | ELF parser/loader, VFS-backed file reads, user-page materialization | `make test-elf-loader` proves valid ELF32/i386 PT_LOAD copy, BSS zero-fill, metadata, and invalid/truncated/missing rejection | Actual ring-3 process launch, argv/envp, dynamic linking, or persistent storage |
-| `process_syscall_elf_entry` | process syscall ABI, brk page lifecycle, VFS-backed exec entry transfer | `make test-process-syscall` proves ring-3 `getpid`, `brk` query/grow/read-write/shrink, no-child `wait`, and transfer into a tiny ELF entry | True `fork`, blocking `wait`, exec address-space replacement, argv/envp, dynamic linking, or persistent storage |
+| `elf_loader_prep` | ELF parser/loader, VFS-backed file reads, user-page materialization | `make test-elf-loader` proves valid ELF32/i386 PT_LOAD copy, BSS zero-fill, metadata, and invalid/truncated/missing rejection | argv/envp, dynamic linking, or persistent storage |
+| `process_syscall_elf_entry` | process syscall ABI, brk page lifecycle, VFS-backed exec entry transfer | `make test-process-syscall` proves ring-3 `getpid`, `brk` query/grow/read-write/shrink, no-child `wait`, and transfer into a tiny ELF entry | Fork/wait lifecycle semantics or argv/envp |
+| `process_lifecycle` | canonical interrupt frame, fork clone, scheduler blocking/exit, zombie reap, exec replacement | `make test-process-lifecycle` proves parent/child fork returns, private memory copies, blocking wait with status, exit/reap, and old-mapping removal after exec | Copy-on-write, `waitpid` options, argv/envp, signals, SMP safety, or per-process fd ownership |
 | `adversarial_red_team` | Guest-only probes that attempt known attacks against blue controls | `make test-red-team`/`make test-blue-team` prove known attacks are blocked and write `build/red-team/findings.jsonl` | Security certification, host-escape testing, or broader hardening than the catalog covers |
 
 ## Format Policy
@@ -92,8 +93,8 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Next MiMo Tasks
 
-1. `fork-wait-exec-replacement-hardening`
-   Build on the proven process syscall + ELF-entry gate to implement true `fork` child-return semantics, zombie wait/reap coverage, and exec address-space replacement with a dedicated runtime gate.
+1. `per-process-fd-lifecycle`
+   Replace the global VFS descriptor table with per-process ownership, define fork inheritance and close-on-exec behavior, and prove exit/exec cleanup.
 
 2. `red-blue-fuzz-continuation`
    Keep expanding guest-only syscall, scheduler, paging, and ELF fuzz probes after each new feature lands.
