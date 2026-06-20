@@ -12,6 +12,13 @@
 #define PROCESS_MAX_PRIORITY 16
 #define PROCESS_HEAP_START 0x90000000u
 #define PROCESS_HEAP_LIMIT 0xA0000000u
+#define PROCESS_MAX_FDS 16
+#define PROCESS_FD_CLOEXEC 0x0001u
+
+struct process_fd {
+    int32_t handle;
+    uint32_t flags;
+};
 
 enum process_state {
     PROCESS_DEAD = 0,
@@ -49,6 +56,9 @@ struct process {
     // Memory management
     uint32_t heap_start;        // User heap start address
     uint32_t heap_end;          // Current heap end (brk)
+
+    // Local descriptors reference refcounted VFS open-file descriptions.
+    struct process_fd fds[PROCESS_MAX_FDS];
 };
 
 void process_init(void);
@@ -67,5 +77,12 @@ void process_mark_exit(struct process *proc, uint32_t exit_code);
 void process_complete_context_switch(void);
 uint32_t process_get_count(void);
 void process_set_address_space(struct process *proc, uint32_t cr3);
+void process_fd_table_init(struct process *proc);
+int process_fd_install(struct process *proc, int handle, uint32_t flags);
+int process_fd_resolve(const struct process *proc, int fd);
+int process_fd_close(struct process *proc, int fd);
+void process_fd_close_on_exec(struct process *proc);
+void process_fd_close_all(struct process *proc);
+int process_fd_inherit(struct process *child, const struct process *parent);
 
 #endif

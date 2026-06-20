@@ -127,6 +127,8 @@ static uint32_t syscall_open(uint32_t path_ptr, uint32_t flags, uint32_t caller_
     char path[VFS_MAX_PATH];
     uint32_t vfs_flags = 0;
     int status;
+    int fd;
+    struct process *current;
 
     if (!is_ring3(caller_cs)) {
         return SYSCALL_EPERM;
@@ -137,7 +139,12 @@ static uint32_t syscall_open(uint32_t path_ptr, uint32_t flags, uint32_t caller_
     if (flags & SYS_O_CREAT) vfs_flags |= VFS_O_CREAT;
     if (flags & SYS_O_TRUNC) vfs_flags |= VFS_O_TRUNC;
 
-    if ((flags & ~(SYS_O_RDWR | SYS_O_CREAT | SYS_O_TRUNC)) != 0) {
+    if ((flags & ~(SYS_O_RDWR | SYS_O_CREAT | SYS_O_TRUNC | SYS_O_CLOEXEC)) != 0) {
+        return SYSCALL_EINVAL;
+    }
+
+    current = process_get_current();
+    if (!current) {
         return SYSCALL_EINVAL;
     }
 
@@ -151,11 +158,20 @@ static uint32_t syscall_open(uint32_t path_ptr, uint32_t flags, uint32_t caller_
         return syscall_from_vfs_status(status);
     }
 
-    return (uint32_t)status;
+    fd = process_fd_install(current, status,
+                            (flags & SYS_O_CLOEXEC) ? PROCESS_FD_CLOEXEC : 0);
+    if (fd < 0) {
+        (void)vfs_close(status);
+        return syscall_from_vfs_status(fd);
+    }
+
+    return (uint32_t)fd;
 }
 
 static uint32_t syscall_read(uint32_t fd, uint32_t buffer_ptr, uint32_t count, uint32_t caller_cs) {
     int status;
+    int handle;
+    struct process *current;
 
     if (!is_ring3(caller_cs)) {
         return SYSCALL_EPERM;
@@ -165,7 +181,13 @@ static uint32_t syscall_read(uint32_t fd, uint32_t buffer_ptr, uint32_t count, u
         return SYSCALL_EFAULT;
     }
 
-    status = vfs_read((int)fd, (void *)buffer_ptr, count);
+    current = process_get_current();
+    handle = process_fd_resolve(current, (int)fd);
+    if (handle < 0) {
+        return SYSCALL_EBADF;
+    }
+
+    status = vfs_read(handle, (void *)buffer_ptr, count);
     if (status < 0) {
         return syscall_from_vfs_status(status);
     }
@@ -175,6 +197,8 @@ static uint32_t syscall_read(uint32_t fd, uint32_t buffer_ptr, uint32_t count, u
 
 static uint32_t syscall_write(uint32_t fd, uint32_t buffer_ptr, uint32_t count, uint32_t caller_cs) {
     int status;
+    int handle;
+    struct process *current;
 
     if (!is_ring3(caller_cs)) {
         return SYSCALL_EPERM;
@@ -184,7 +208,13 @@ static uint32_t syscall_write(uint32_t fd, uint32_t buffer_ptr, uint32_t count, 
         return SYSCALL_EFAULT;
     }
 
-    status = vfs_write((int)fd, (const void *)buffer_ptr, count);
+    current = process_get_current();
+    handle = process_fd_resolve(current, (int)fd);
+    if (handle < 0) {
+        return SYSCALL_EBADF;
+    }
+
+    status = vfs_write(handle, (const void *)buffer_ptr, count);
     if (status < 0) {
         return syscall_from_vfs_status(status);
     }
@@ -193,14 +223,14 @@ static uint32_t syscall_write(uint32_t fd, uint32_t buffer_ptr, uint32_t count, 
 }
 
 static uint32_t syscall_close(uint32_t fd, uint32_t caller_cs) {
-    int status;
+    struct process *current;
 
     if (!is_ring3(caller_cs)) {
         return SYSCALL_EPERM;
     }
 
-    status = vfs_close((int)fd);
-    return syscall_from_vfs_status(status);
+    current = process_get_current();
+    return syscall_from_vfs_status(process_fd_close(current, (int)fd));
 }
 
 static uint32_t syscall_stat(uint32_t path_ptr, uint32_t stat_ptr, uint32_t caller_cs) {
@@ -652,7 +682,7 @@ static uint32_t syscall_handle(uint32_t syscall_num,
             serial_put_uint32(info.entry);
             serial_puts("\n");
 
-            vfs_close_all();
+            process_fd_close_on_exec(current);
             current->cr3 = new_cr3;
             current->heap_start = PROCESS_HEAP_START;
             current->heap_end = PROCESS_HEAP_START;

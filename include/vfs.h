@@ -36,6 +36,7 @@ int vfs_mount(void);
 int vfs_open(const char *path, uint32_t flags);
 int vfs_read(int fd, void *buffer, uint32_t count);
 int vfs_write(int fd, const void *buffer, uint32_t count);
+int vfs_retain(int fd);
 int vfs_close(int fd);
 void vfs_close_all(void);
 int vfs_stat(const char *path, struct vfs_stat *out);

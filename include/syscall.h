@@ -34,6 +34,7 @@ uint32_t syscall_dispatch(uint32_t frame_esp);
 #define SYS_O_RDWR   (SYS_O_RDONLY | SYS_O_WRONLY)
 #define SYS_O_CREAT  0x0100
 #define SYS_O_TRUNC  0x0200
+#define SYS_O_CLOEXEC 0x0400
 
 struct syscall_file_stat {
     uint32_t size;

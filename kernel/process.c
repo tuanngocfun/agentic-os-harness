@@ -2,6 +2,7 @@
 #include "paging.h"
 #include "scheduler.h"
 #include "string.h"
+#include "vfs.h"
 #include <stdint.h>
 
 #define STACK_SLOTS 16
@@ -12,6 +13,105 @@ static uint32_t next_pid = 1;
 static uint32_t process_count = 0;
 static uint32_t stack_pool[STACK_SLOTS * STACK_SLOT_SIZE];
 static uint16_t stack_free_bitmap = 0xFFFF;  // All 16 slots free initially
+
+void process_fd_table_init(struct process *proc) {
+    if (!proc) {
+        return;
+    }
+
+    for (int i = 0; i < PROCESS_MAX_FDS; i++) {
+        proc->fds[i].handle = -1;
+        proc->fds[i].flags = 0;
+    }
+}
+
+int process_fd_install(struct process *proc, int handle, uint32_t flags) {
+    if (!proc || handle < 0 || (flags & ~PROCESS_FD_CLOEXEC) != 0) {
+        return VFS_EINVAL;
+    }
+
+    for (int fd = 0; fd < PROCESS_MAX_FDS; fd++) {
+        if (proc->fds[fd].handle < 0) {
+            proc->fds[fd].handle = handle;
+            proc->fds[fd].flags = flags;
+            return fd;
+        }
+    }
+
+    return VFS_EMFILE;
+}
+
+int process_fd_resolve(const struct process *proc, int fd) {
+    if (!proc || fd < 0 || fd >= PROCESS_MAX_FDS ||
+        proc->fds[fd].handle < 0) {
+        return VFS_EBADF;
+    }
+    return proc->fds[fd].handle;
+}
+
+int process_fd_close(struct process *proc, int fd) {
+    int handle = process_fd_resolve(proc, fd);
+
+    if (handle < 0) {
+        return VFS_EBADF;
+    }
+
+    proc->fds[fd].handle = -1;
+    proc->fds[fd].flags = 0;
+    return vfs_close(handle);
+}
+
+void process_fd_close_on_exec(struct process *proc) {
+    if (!proc) {
+        return;
+    }
+
+    for (int fd = 0; fd < PROCESS_MAX_FDS; fd++) {
+        if (proc->fds[fd].handle >= 0 &&
+            (proc->fds[fd].flags & PROCESS_FD_CLOEXEC) != 0) {
+            (void)process_fd_close(proc, fd);
+        }
+    }
+}
+
+void process_fd_close_all(struct process *proc) {
+    if (!proc) {
+        return;
+    }
+
+    for (int fd = 0; fd < PROCESS_MAX_FDS; fd++) {
+        if (proc->fds[fd].handle >= 0) {
+            (void)process_fd_close(proc, fd);
+        }
+    }
+}
+
+int process_fd_inherit(struct process *child, const struct process *parent) {
+    if (!child || !parent) {
+        return VFS_EINVAL;
+    }
+
+    for (int fd = 0; fd < PROCESS_MAX_FDS; fd++) {
+        if (child->fds[fd].handle >= 0) {
+            return VFS_EINVAL;
+        }
+    }
+
+    for (int fd = 0; fd < PROCESS_MAX_FDS; fd++) {
+        int handle = parent->fds[fd].handle;
+
+        if (handle < 0) {
+            continue;
+        }
+        if (vfs_retain(handle) != VFS_SUCCESS) {
+            process_fd_close_all(child);
+            return VFS_EBADF;
+        }
+        child->fds[fd] = parent->fds[fd];
+    }
+
+    return VFS_SUCCESS;
+}
 
 static uint32_t *allocate_stack(uint32_t size) {
     if (size != KERNEL_STACK_SIZE) {
@@ -88,6 +188,7 @@ struct process *process_create(uint32_t entry_point, int is_user) {
     // Initialize heap in a high user range below USER_STACK_TOP.
     proc->heap_start = PROCESS_HEAP_START;
     proc->heap_end = PROCESS_HEAP_START;
+    process_fd_table_init(proc);
 
     proc->kernel_stack = allocate_stack(KERNEL_STACK_SIZE);
     if (!proc->kernel_stack) {
@@ -163,6 +264,7 @@ struct process *process_create_preemptive(uint32_t entry_point) {
     proc->wait_completion_pending = 0;
     proc->heap_start = PROCESS_HEAP_START;
     proc->heap_end = PROCESS_HEAP_START;
+    process_fd_table_init(proc);
 
     proc->kernel_stack = allocate_stack(KERNEL_STACK_SIZE);
     if (!proc->kernel_stack) {
@@ -221,6 +323,7 @@ struct process *process_fork(struct process *parent,
     }
 
     memset(child, 0, sizeof(*child));
+    process_fd_table_init(child);
     child->kernel_stack = allocate_stack(KERNEL_STACK_SIZE);
     if (!child->kernel_stack) {
         return NULL;
@@ -256,6 +359,13 @@ struct process *process_fork(struct process *parent,
     child->heap_end = parent->heap_end;
     child->next = NULL;
 
+    if (process_fd_inherit(child, parent) != VFS_SUCCESS) {
+        paging_destroy_address_space(child_cr3);
+        free_stack(child->kernel_stack);
+        memset(child, 0, sizeof(*child));
+        return NULL;
+    }
+
     parent->interrupt_frame = 1;
     process_count++;
     return child;
@@ -266,6 +376,7 @@ void process_destroy(struct process *proc) {
         return;
     }
 
+    process_fd_close_all(proc);
     paging_destroy_address_space(proc->cr3);
 
     // Free the kernel stack
@@ -295,6 +406,7 @@ void process_destroy(struct process *proc) {
     proc->heap_end = 0;
     proc->user_stack = NULL;
     proc->next = NULL;
+    process_fd_table_init(proc);
 
     if (process_count > 0) {
         process_count--;
@@ -384,6 +496,7 @@ void process_mark_exit(struct process *proc, uint32_t exit_code) {
 
     proc->exit_code = exit_code;
     proc->exited = 1;
+    process_fd_close_all(proc);
     proc->state = PROCESS_ZOMBIE;
 
     for (int i = 0; i < MAX_PROCESSES; i++) {

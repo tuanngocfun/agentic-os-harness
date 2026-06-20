@@ -5,6 +5,7 @@
 
 struct vfs_open_file {
     int used;
+    uint32_t ref_count;
     char path[VFS_MAX_PATH];
     uint32_t flags;
     uint32_t offset;
@@ -141,6 +142,7 @@ int vfs_open(const char *path, uint32_t flags) {
     }
 
     vfs_open_files[fd].used = 1;
+    vfs_open_files[fd].ref_count = 1;
     vfs_open_files[fd].flags = flags;
     vfs_open_files[fd].offset = 0;
     memcpy(vfs_open_files[fd].path, path_copy, VFS_MAX_PATH);
@@ -198,7 +200,21 @@ int vfs_close(int fd) {
         return VFS_EBADF;
     }
 
+    if (vfs_open_files[fd].ref_count > 1) {
+        vfs_open_files[fd].ref_count--;
+        return VFS_SUCCESS;
+    }
+
     memset(&vfs_open_files[fd], 0, sizeof(vfs_open_files[fd]));
+    return VFS_SUCCESS;
+}
+
+int vfs_retain(int fd) {
+    if (!vfs_fd_valid(fd) || vfs_open_files[fd].ref_count == UINT32_MAX) {
+        return VFS_EBADF;
+    }
+
+    vfs_open_files[fd].ref_count++;
     return VFS_SUCCESS;
 }
 

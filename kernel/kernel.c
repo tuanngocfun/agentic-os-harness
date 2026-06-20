@@ -168,6 +168,119 @@ static uint8_t vfs_read_buf[SECTOR_SIZE * 2 + 37];
 static uint8_t elf_test_image[ELF_TEST_FILE_SIZE];
 #endif
 
+#ifdef ENABLE_PROCESS_FD_SELFTEST
+static void process_fd_selftest(void) {
+        const char *path = "/fdtest";
+        const char payload[3] = {'A', 'B', 'C'};
+        char first = 0;
+        char second = 0;
+        char third = 0;
+        char scratch = 0;
+        int seed;
+        int handle;
+        int parent_fd;
+        int child_handle;
+        int parent_handle;
+        int setup_ok;
+        int isolation_ok;
+        int inherit_ok;
+        int shared_offset_ok;
+        int cloexec_ok;
+        int exit_cleanup_ok;
+        int negative_ok;
+        struct interrupt_frame fork_frame;
+
+        serial_puts("PROCESS_FD_TEST\n");
+        vfs_format();
+        vfs_mount();
+        process_init();
+
+        seed = vfs_open(path, VFS_O_CREAT | VFS_O_RDWR | VFS_O_TRUNC);
+        setup_ok = seed >= 0 &&
+                   vfs_write(seed, payload, sizeof(payload)) == (int)sizeof(payload) &&
+                   vfs_close(seed) == VFS_SUCCESS;
+
+        struct process *parent = process_create(0, 0);
+        struct process *other = process_create(0, 0);
+        struct process *child = NULL;
+        handle = setup_ok ? vfs_open(path, VFS_O_RDONLY) : VFS_EIO;
+        parent_fd = handle >= 0 ? process_fd_install(parent, handle, 0) : VFS_EIO;
+        setup_ok = setup_ok && parent && other && parent_fd >= 0;
+
+        isolation_ok = setup_ok &&
+                       process_fd_resolve(other, parent_fd) == VFS_EBADF;
+        if (isolation_ok) {
+            serial_puts("PROCESS_FD_ISOLATION_OK\n");
+        }
+
+        memset(&fork_frame, 0, sizeof(fork_frame));
+        fork_frame.cs = 0x1B;
+        fork_frame.eflags = 0x202;
+        fork_frame.eip = 0x40000000;
+        fork_frame.user_esp = USER_STACK_TOP;
+        child = setup_ok ? process_fork(parent, &fork_frame) : NULL;
+        inherit_ok = child &&
+                     process_fd_resolve(child, parent_fd) == handle;
+        if (inherit_ok) {
+            serial_puts("PROCESS_FD_FORK_INHERIT_OK\n");
+        }
+
+        child_handle = inherit_ok ? process_fd_resolve(child, parent_fd) : VFS_EBADF;
+        parent_handle = inherit_ok ? process_fd_resolve(parent, parent_fd) : VFS_EBADF;
+        shared_offset_ok = inherit_ok &&
+                           vfs_read(child_handle, &first, 1) == 1 && first == 'A' &&
+                           vfs_read(parent_handle, &second, 1) == 1 && second == 'B' &&
+                           process_fd_close(child, parent_fd) == VFS_SUCCESS &&
+                           vfs_read(parent_handle, &third, 1) == 1 && third == 'C';
+        if (shared_offset_ok) {
+            serial_puts("PROCESS_FD_SHARED_OFFSET_OK\n");
+        }
+
+        int clo_handle = vfs_open(path, VFS_O_RDONLY);
+        int clo_fd = clo_handle >= 0
+                         ? process_fd_install(parent, clo_handle, PROCESS_FD_CLOEXEC)
+                         : VFS_EIO;
+        process_fd_close_on_exec(parent);
+        cloexec_ok = clo_fd >= 0 &&
+                     process_fd_resolve(parent, clo_fd) == VFS_EBADF &&
+                     vfs_read(clo_handle, &scratch, 1) == VFS_EBADF &&
+                     process_fd_resolve(parent, parent_fd) == parent_handle;
+        if (cloexec_ok) {
+            serial_puts("PROCESS_FD_CLOEXEC_OK\n");
+        }
+
+        int exit_handle = vfs_open(path, VFS_O_RDONLY);
+        int exit_fd = exit_handle >= 0
+                          ? process_fd_install(child, exit_handle, 0)
+                          : VFS_EIO;
+        process_mark_exit(child, 0);
+        exit_cleanup_ok = exit_fd >= 0 &&
+                          process_fd_resolve(child, exit_fd) == VFS_EBADF &&
+                          vfs_read(exit_handle, &scratch, 1) == VFS_EBADF;
+        if (exit_cleanup_ok) {
+            serial_puts("PROCESS_FD_EXIT_CLEANUP_OK\n");
+        }
+
+        negative_ok = process_fd_resolve(parent, -1) == VFS_EBADF &&
+                      process_fd_resolve(parent, PROCESS_MAX_FDS) == VFS_EBADF &&
+                      process_fd_close(parent, PROCESS_MAX_FDS) == VFS_EBADF;
+        if (negative_ok) {
+            serial_puts("PROCESS_FD_NEGATIVE_OK\n");
+        }
+
+        process_fd_close_all(parent);
+        process_destroy(child);
+        process_init();
+
+        if (setup_ok && isolation_ok && inherit_ok && shared_offset_ok &&
+            cloexec_ok && exit_cleanup_ok && negative_ok) {
+            serial_puts("PROCESS_FD_OK\n");
+        } else {
+            serial_puts("PROCESS_FD_FAIL\n");
+        }
+}
+#endif
+
 #ifdef ENABLE_ELF_LOADER_SELFTEST
 static uint8_t elf_bad_image[ELF_TEST_FILE_SIZE];
 static uint8_t elf_trunc_image[32];
@@ -1221,7 +1334,9 @@ static __attribute__((noreturn)) void redteam_user_entry(void) {
     fd_path[5] = 'a';
     fd_path[6] = 'k';
     fd_path[7] = '\0';
-    result = syscall3(SYS_OPEN, (uint32_t)fd_path, SYS_O_CREAT | SYS_O_RDWR | SYS_O_TRUNC, 0);
+    result = syscall3(SYS_OPEN, (uint32_t)fd_path,
+                      SYS_O_CREAT | SYS_O_RDWR | SYS_O_TRUNC | SYS_O_CLOEXEC,
+                      0);
     if (result != 0) {
         syscall_marker(SYSCALL_MARK_RED_FAIL);
     }
@@ -1586,6 +1701,10 @@ void kernel_main(void) {
     }
 #endif
 
+#ifdef ENABLE_PROCESS_FD_SELFTEST
+    process_fd_selftest();
+#endif
+
 #ifdef ENABLE_ELF_LOADER_SELFTEST
     {
         struct elf_load_info info;
@@ -1717,6 +1836,10 @@ void kernel_main(void) {
 
         vfs_format();
         vfs_mount();
+        process_init();
+        scheduler_init();
+        struct process *user_proc =
+            process_create((uint32_t)syscall_file_user_entry, 1);
         map_user_code_span((uint32_t)syscall_marker, (uint32_t)syscall_file_user_entry);
         paging_map_page(user_stack_page,
                         SYSCALL_FILE_STACK_PHYSICAL,
@@ -1725,7 +1848,10 @@ void kernel_main(void) {
                         SYSCALL_FILE_DATA_PHYSICAL,
                         PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
 
-        enter_user_mode((uint32_t)syscall_file_user_entry, USER_STACK_TOP);
+        if (user_proc) {
+            scheduler_set_current(user_proc);
+            enter_user_mode((uint32_t)syscall_file_user_entry, USER_STACK_TOP);
+        }
 
         serial_puts("SYSCALL_FILE_FAIL\n");
         while (1) {
