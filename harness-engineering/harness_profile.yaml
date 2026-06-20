@@ -1,6 +1,6 @@
 profile_version: "2026-06-20"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_fork_wait_exit_exec_replacement_red_blue"
+project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_process_lifecycle_per_process_fds_red_blue"
 source_of_truth: true
 status_last_verified: "2026-06-20"
 
@@ -12,7 +12,6 @@ scope_limits:
     - "waitpid_options"
     - "argv_envp"
     - "signals"
-    - "per_process_file_descriptors"
     - "smp_safe_scheduling"
     - "persistent_storage"
     - "networking"
@@ -81,7 +80,7 @@ claim_status:
   paging: "claimable_with_map_fault_user_supervisor_and_address_space_tests"
   syscall: "claimable_with_syscall_ring3_negative_and_file_io_tests"
   exception_panic: "claimable_with_exception_test_suite"
-  process: "claimable_with_ring3_fork_wait_exit_reap_exec_replacement_tests"
+  process: "claimable_with_ring3_fork_wait_exit_reap_exec_replacement_and_per_process_fd_tests"
   scheduler: "claimable_with_scheduler_preemption_priority_fairness_tests"
   user_mode: "claimable_with_usermode_ring3_test"
   block_device: "claimable_with_ramdisk_runtime_test"
@@ -117,6 +116,7 @@ deep_gates:
   - "elf_loader_prep_runtime_test"
   - "process_syscall_elf_entry_transfer_test"
   - "process_fork_wait_exit_reap_exec_replacement_test"
+  - "process_fd_isolation_fork_inheritance_cloexec_exit_cleanup_test"
   - "scheduler_priority_fairness_safety_test"
   - "ramdisk_block_device_runtime_test"
   - "vfs_simplefs_runtime_test"
@@ -207,9 +207,9 @@ routes:
       - "check_harness_contract"
 
 mimo_next_tasks:
-  - id: "per-process-fd-lifecycle"
+  - id: "argv-envp-exec-stack"
     priority: "P0"
-    success: "Replace the global VFS descriptor table with per-process descriptor ownership, define fork inheritance and close-on-exec behavior, and prove cleanup through targeted runtime gates."
+    success: "Build a validated initial user stack containing argc, argv, and envp during exec, and prove malformed or oversized vectors fail without replacing the old image."
   - id: "red-blue-fuzz-continuation"
     priority: "P1"
     success: "Keep expanding guest-only syscall, scheduler, paging, and ELF fuzz probes after each new feature lands."

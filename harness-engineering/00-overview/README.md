@@ -4,7 +4,7 @@
 
 Xây dựng một hệ điều hành **x86 bare metal** viết bằng **C**, chạy trên **QEMU**, bằng các milestone có bằng chứng.
 
-Current milestone: stage-2 LBA boot, shell, memory/paging, preemptive scheduling, ring-3 syscalls, volatile VFS/SimpleFS, ELF exec, fork/wait/exit/reap, and guest-only red/blue regressions are targeted-runtime proven. This is still a teaching OS, not a broad safety or production-readiness claim.
+Current milestone: stage-2 LBA boot, shell, memory/paging, preemptive scheduling, ring-3 syscalls, volatile VFS/SimpleFS, ELF exec, fork/wait/exit/reap, per-process descriptor lifecycle, and guest-only red/blue regressions are targeted-runtime proven. This is still a teaching OS, not a broad safety or production-readiness claim.
 
 ## Harness Engineering là gì?
 

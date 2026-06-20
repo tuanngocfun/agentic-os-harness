@@ -47,7 +47,7 @@ Verification gate:
 - `make test-process-lifecycle` proves exec replaces the old mappings and resets heap state after fork/wait lifecycle activity.
 
 Next hardening:
-- Add argv/envp setup, per-process fd tables, and stricter lifecycle ownership once process management grows beyond the current single-running-process tests.
+- Add argv/envp setup and stricter lifecycle ownership; per-process descriptor tables are now runtime-proven.
 
 ## RT-FS-001
 
@@ -99,18 +99,20 @@ Next hardening:
 
 ## RT-EXEC-002
 
-Goal: stop file capabilities from leaking across process image replacement while the OS still lacks per-process fd tables and close-on-exec flags.
+Goal: stop opted-in file capabilities from leaking across process image replacement while preserving ordinary descriptor inheritance semantics.
 
 Implemented control:
 - Successful `SYS_EXEC` calls `vfs_close_all()` after loading the new image and before returning to ring 3.
-- The red probe opens a writable fd before exec; the new ELF entry expects `SYS_WRITE` on that inherited fd to return `SYSCALL_EBADF`.
+- The red probe opens a writable fd with `SYS_O_CLOEXEC`; the new ELF entry expects `SYS_WRITE` on that fd to return `SYSCALL_EBADF`.
 
 Verification gate:
-- `make test-red-team` proves the inherited-fd attack is blocked.
+- `make test-process-fd` proves local ownership, real-fork inheritance/shared offsets, selective CLOEXEC, and exit cleanup.
+- `make test-red-team` proves the CLOEXEC bypass attempt is blocked through actual exec.
 - `make test-process-syscall` must still prove normal VFS-backed ELF entry transfer.
 
 Next hardening:
-- Replace the global VFS descriptor table with per-process fd tables and explicit close-on-exec policy.
+- Keep process-local descriptor tables mapped to refcounted VFS open-file descriptions.
+- Preserve descriptors across exec by default; close only `SYS_O_CLOEXEC` entries after the new image is fully prepared.
 
 ## RT-EXEC-003
 

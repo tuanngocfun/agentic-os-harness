@@ -64,6 +64,7 @@ require_file "../scripts/syscall_negative_test.sh"
 require_file "../scripts/syscall_file_test.sh"
 require_file "../scripts/elf_loader_test.sh"
 require_file "../scripts/process_lifecycle_test.sh"
+require_file "../scripts/process_fd_test.sh"
 require_file "../scripts/e820_test.sh"
 require_file "../scripts/ramdisk_test.sh"
 require_file "../scripts/vfs_test.sh"
@@ -99,7 +100,7 @@ require_grep 'production_ready:[[:space:]]*false' "harness_profile.yaml"
 require_grep 'STAGE2_LOAD_SECTORS' "$REPO_ROOT/boot/boot.asm"
 require_grep 'KERNEL_LBA_START' "$REPO_ROOT/boot/stage2.asm"
 require_grep 'STAGE2_OK' "$REPO_ROOT/boot/stage2.asm"
-require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_fork_wait_exit_exec_replacement_red_blue"' "harness_profile.yaml"
+require_grep 'project_phase:[[:space:]]*"boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_process_lifecycle_per_process_fds_red_blue"' "harness_profile.yaml"
 require_grep 'format_policy:' "harness_profile.yaml"
 require_grep 'runtime_evidence:[[:space:]]*"jsonl"' "harness_profile.yaml"
 require_grep 'security_posture:' "harness_profile.yaml"
@@ -221,8 +222,16 @@ fi
 if grep -q 'ENABLE_USERMODE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-usermode' "$REPO_ROOT/Makefile" && grep -q 'USERMODE_RING3_OK' "$REPO_ROOT/scripts/usermode_test.sh" && rg -q 'enter_user_mode|switch_to_usermode' "$REPO_ROOT/kernel" "$REPO_ROOT/include" 2>/dev/null; then
   require_grep 'user_mode:[[:space:]]*"claimable_with_usermode_ring3_test"' "harness_profile.yaml"
   if grep -q 'ENABLE_PROCESS_LIFECYCLE_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-process-lifecycle' "$REPO_ROOT/Makefile" && grep -q 'LIFECYCLE_OK' "$REPO_ROOT/scripts/process_lifecycle_test.sh"; then
-    require_grep 'process:[[:space:]]*"claimable_with_ring3_fork_wait_exit_reap_exec_replacement_tests"' "harness_profile.yaml"
-    require_grep 'test-deep:.*test-process-syscall.*test-process-lifecycle' "$REPO_ROOT/Makefile"
+    if grep -q 'ENABLE_PROCESS_FD_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'test-process-fd' "$REPO_ROOT/Makefile" && grep -q 'PROCESS_FD_OK' "$REPO_ROOT/scripts/process_fd_test.sh"; then
+      require_grep 'process:[[:space:]]*"claimable_with_ring3_fork_wait_exit_reap_exec_replacement_and_per_process_fd_tests"' "harness_profile.yaml"
+      require_grep 'test-deep:.*test-process-lifecycle.*test-process-fd' "$REPO_ROOT/Makefile"
+      require_grep 'process_fd_inherit' "$REPO_ROOT/kernel/process.c"
+      require_grep 'process_fd_close_on_exec' "$REPO_ROOT/kernel/syscall.c"
+      require_grep 'SYS_O_CLOEXEC' "$REPO_ROOT/include/syscall.h"
+    else
+      require_grep 'process:[[:space:]]*"claimable_with_ring3_fork_wait_exit_reap_exec_replacement_tests"' "harness_profile.yaml"
+      require_grep 'test-deep:.*test-process-syscall.*test-process-lifecycle' "$REPO_ROOT/Makefile"
+    fi
     require_grep 'process_fork' "$REPO_ROOT/kernel/process.c"
     require_grep 'scheduler_block_current' "$REPO_ROOT/kernel/scheduler.c"
     require_grep 'syscall_dispatch' "$REPO_ROOT/kernel/syscall.c"
@@ -328,7 +337,8 @@ if grep -q 'ENABLE_REDTEAM_SELFTEST' "$REPO_ROOT/kernel/kernel.c" && grep -q 'te
   require_grep 'RT-SCHED-001' "harness_profile.yaml"
   require_grep 'SYS_TEST_ABI' "$REPO_ROOT/kernel/syscall.c"
   require_grep 'SYSCALL_EPERM' "$REPO_ROOT/kernel/syscall.c"
-  require_grep 'vfs_close_all' "$REPO_ROOT/kernel/syscall.c"
+  require_grep 'process_fd_close_on_exec' "$REPO_ROOT/kernel/syscall.c"
+  require_grep 'SYS_O_CLOEXEC' "$REPO_ROOT/kernel/kernel.c"
   require_grep 'paging_destroy_address_space' "$REPO_ROOT/kernel/syscall.c"
   require_grep 'paging_destroy_address_space' "$REPO_ROOT/kernel/paging.c"
   require_grep 'paging_destroy_address_space' "$REPO_ROOT/kernel/process.c"
@@ -349,13 +359,15 @@ else
 fi
 require_grep '^test-blue-team:[[:space:]]*test-red-team' "$REPO_ROOT/Makefile"
 require_grep 'pending_deep_gates:[[:space:]]*\[\]' "harness_profile.yaml"
-if grep -Eq 'scheduler-timer-preemption-proof|process-address-space-isolation-proof|memory-allocator-proof|paging-per-process-address-space-proof|syscall-user-mode-negative-path-proof|memory-map-and-frame-lifecycle-proof|scheduler-safety-proof|fork-wait-exec-replacement-hardening' "harness_profile.yaml"; then
+if grep -Eq 'scheduler-timer-preemption-proof|process-address-space-isolation-proof|memory-allocator-proof|paging-per-process-address-space-proof|syscall-user-mode-negative-path-proof|memory-map-and-frame-lifecycle-proof|scheduler-safety-proof|fork-wait-exec-replacement-hardening|per-process-fd-lifecycle' "harness_profile.yaml"; then
   fail "completed P0/P1/P2 proof tasks are still listed as next work"
 else
   pass "completed core proof tasks are removed from next work"
 fi
 require_grep 'Do not add networking' "13-agent-routing-and-risk/README.md"
 require_grep 'test-process-lifecycle' "11-reference/README.md"
+require_grep 'test-process-fd' "11-reference/README.md"
+require_grep 'argv-envp-exec-stack' "harness_profile.yaml"
 require_grep 'test-vfs' "11-reference/README.md"
 require_grep 'test-red-team' "11-reference/README.md"
 require_grep 'Claim-aware routing matrix|Claim-aware MiMo routing|Routing Matrix' "13-agent-routing-and-risk/README.md"

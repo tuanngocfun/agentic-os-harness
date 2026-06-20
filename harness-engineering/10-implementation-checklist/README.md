@@ -47,7 +47,8 @@
 - [ ] Make `SHELL_READY` required only after shell exists.
 - [ ] Add shell-runtime validation before claiming the shell works.
 - [x] Process lifecycle, scheduler, syscall, user-mode, VFS, and ELF claims have targeted runtime gates.
-- [ ] Add per-process descriptor ownership with fork, exec, and exit semantics.
+- [x] Add per-process descriptor ownership with fork inheritance/shared offsets, selective close-on-exec, and exit cleanup.
+- [ ] Add validated argc/argv/envp construction to exec's initial user stack.
 
 ## Phase 4 — Regression
 

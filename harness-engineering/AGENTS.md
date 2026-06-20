@@ -72,7 +72,7 @@ llms.txt                  ← Root discovery index for agents
 - **Build-config contract** — `KERNEL_DEFINES` must be tracked through `build/kernel_defines.stamp`; after a selftest build, plain `make all` must rebuild default kernel objects before `make test`.
 - **Git contract** — Inspect status/diff before handoff; stage only explicit paths after approval; never stage deletions or mutate history without explicit user request
 - **Claim contract** — A subsystem is not "working" until `harness_profile.yaml` marks it claimable and a targeted runtime gate proves it.
-- **Limit contract** — Passing all current gates proves only the catalogued behaviors. COW fork, argv/envp, signals, per-process descriptors, SMP safety, persistent storage, networking, and broad security remain unproven.
+- **Limit contract** — Passing all current gates proves only the catalogued behaviors. COW fork, argv/envp, signals, SMP safety, persistent storage, networking, and broad security remain unproven.
 - **Format contract** — Markdown for instructions, YAML for `harness_profile.yaml`, JSONL for runtime evidence, HTML only for rendered reports/dashboards.
 
 ## Engineering Rubric
@@ -108,4 +108,5 @@ llms.txt                  ← Root discovery index for agents
 - [x] Phase 10: Git change management (12-git-change-management/) — Repo state, branch, diff, staging, and handoff gates
 - [x] Phase 11: Agent routing and risk (13-agent-routing-and-risk/, harness_profile.yaml) — Claim-aware MiMo routing and next work order
 - [x] Phase 12: Stage-2 through process lifecycle evidence — current profile and deep gates synchronized
-- [ ] Phase 13: Per-process file-descriptor ownership — current P0 implementation route
+- [x] Phase 13: Per-process file-descriptor ownership — fork inheritance, shared offsets, selective close-on-exec, and exit cleanup proven
+- [ ] Phase 14: Exec argv/envp user-stack contract — current P0 implementation route

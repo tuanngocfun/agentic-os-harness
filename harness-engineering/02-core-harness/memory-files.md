@@ -32,9 +32,9 @@ agent_docs/
 # Agent Progress Log
 
 ## Current Task
-Implement per-process file-descriptor ownership on the proven stage-2 OS core
+Implement validated argc/argv/envp construction on exec's initial user stack
 
-## Status: IN_PROGRESS
+## Status: NEXT_P0
 
 ## Completed Steps
 - [x] Boot sector written (boot.asm) — 2026-05-31 10:00
@@ -44,9 +44,9 @@ Implement per-process file-descriptor ownership on the proven stage-2 OS core
 - [x] IDT setup (idt.asm + idt.c) — 2026-05-31 12:00
 
 ## Next Steps
-- [ ] Replace global descriptor ownership with per-process descriptor tables
-- [ ] Prove fork inheritance, close-on-exec, invalid descriptor handling, and exit cleanup
-- [ ] Preserve existing VFS, process lifecycle, and red/blue runtime gates
+- [ ] Define bounded user argv/envp copy-in and stack layout
+- [ ] Reject malformed/oversized vectors without replacing the old process image
+- [ ] Prove argc/argv/envp from the new ELF entry while preserving lifecycle, descriptor, and red/blue gates
 
 ## Blockers
 - None currently

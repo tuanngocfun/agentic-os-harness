@@ -29,7 +29,7 @@ Proven now:
 Not proven:
 - Production-grade virtual memory or dynamic heap growth from arbitrary frame runs.
 - Full userland syscall ABI coverage beyond the proven syscall set and negative paths.
-- Copy-on-write fork, `waitpid` options, argv/envp, signals, or per-process file-descriptor ownership.
+- Copy-on-write fork, `waitpid` options, argv/envp, signals, or SMP-safe lifecycle behavior.
 - SMP-safe scheduling or production-grade synchronization.
 - Persistent storage, networking, graphics, dynamic linking, and production-grade userland.
 - Broad adversarial hardening beyond the currently blocked red-team catalog.
@@ -58,7 +58,7 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | Scope | Rating | Why |
 |---|---:|---|
 | Boot-to-shell teaching milestone | 80% | Build, boot markers, keyboard IRQ, shell dispatch, and VGA runtime proof pass. |
-| Credible protected OS core | 78% | GDT/IDT exist; timer ticks, syscall ABI plus ring-3 negative paths, file/process syscall gates, exception panic, cooperative and preemptive scheduler evidence, scheduler priority/fairness markers, paging fault evidence, user/supervisor enforcement, E820/frame lifecycle evidence, heap allocator behavior, ring-3 entry, and per-process CR3 isolation have targeted gates, but production-grade VM, SMP safety, and full userland remain unproven. |
+| Credible protected OS core | 82% | GDT/IDT, timer preemption, syscall negative paths, process lifecycle, per-process descriptors, paging faults/isolation, E820/frame lifecycle, allocator behavior, VFS, and ELF entry have targeted gates, but COW VM, argv/envp, signals, SMP safety, persistent storage, and full userland remain unproven. |
 | Blended current project promise | 82% | Real stage-one implementation plus several stage-two proofs; remaining risk is deeper Unix-like process semantics and hardening, not storage or ELF-entry plumbing. |
 
 ## Routing Matrix
@@ -79,7 +79,7 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | `syscall_negative` | syscall validation, page-aware user pointer checks, ring-3 syscall harness | `make test-syscall-negative` proves invalid numbers, kernel pointers, unmapped user pointers, and valid ring-3 syscall marker path | Complete POSIX-style syscall ABI or resource-limit policy |
 | `elf_loader_prep` | ELF parser/loader, VFS-backed file reads, user-page materialization | `make test-elf-loader` proves valid ELF32/i386 PT_LOAD copy, BSS zero-fill, metadata, and invalid/truncated/missing rejection | argv/envp, dynamic linking, or persistent storage |
 | `process_syscall_elf_entry` | process syscall ABI, brk page lifecycle, VFS-backed exec entry transfer | `make test-process-syscall` proves ring-3 `getpid`, `brk` query/grow/read-write/shrink, no-child `wait`, and transfer into a tiny ELF entry | Fork/wait lifecycle semantics or argv/envp |
-| `process_lifecycle` | canonical interrupt frame, fork clone, scheduler blocking/exit, zombie reap, exec replacement | `make test-process-lifecycle` proves parent/child fork returns, private memory copies, blocking wait with status, exit/reap, and old-mapping removal after exec | Copy-on-write, `waitpid` options, argv/envp, signals, SMP safety, or per-process fd ownership |
+| `process_lifecycle` | canonical interrupt frame, fork clone, scheduler blocking/exit, zombie reap, exec replacement, descriptor ownership | `make test-process-lifecycle` plus `make test-process-fd` prove lifecycle and process-local descriptor isolation, real-fork inheritance/shared offsets, CLOEXEC, and exit cleanup | Copy-on-write, `waitpid` options, argv/envp, signals, or SMP safety |
 | `adversarial_red_team` | Guest-only probes that attempt known attacks against blue controls | `make test-red-team`/`make test-blue-team` prove known attacks are blocked and write `build/red-team/findings.jsonl` | Security certification, host-escape testing, or broader hardening than the catalog covers |
 
 ## Format Policy
@@ -93,8 +93,8 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Next MiMo Tasks
 
-1. `per-process-fd-lifecycle`
-   Replace the global VFS descriptor table with per-process ownership, define fork inheritance and close-on-exec behavior, and prove exit/exec cleanup.
+1. `argv-envp-exec-stack`
+   Construct and validate argc/argv/envp on the new exec user stack, with rollback on malformed or oversized vectors.
 
 2. `red-blue-fuzz-continuation`
    Keep expanding guest-only syscall, scheduler, paging, and ELF fuzz probes after each new feature lands.
@@ -104,7 +104,7 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Forbidden Next Work
 
-Do not add networking, graphics mode, or more shell commands before per-process descriptor ownership has a targeted runtime gate. Existing filesystem and process-lifecycle claims remain limited to their named tests.
+Do not add networking, graphics mode, or more shell commands before exec has a validated argv/envp user-stack contract. Existing filesystem and process-lifecycle claims remain limited to their named tests.
 
 ## External Practice Mapping
 

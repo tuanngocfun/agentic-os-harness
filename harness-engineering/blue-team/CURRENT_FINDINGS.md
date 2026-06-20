@@ -72,7 +72,8 @@ Status: blocked by current blue control; keep regression probe active.
 - Attack/defense gate: `make test-red-team`
 - Expected marker: `RED_EXEC_FD_LEAK_BLOCKED`
 - Machine evidence: `build/red-team/findings.jsonl`
-- Blue control: successful `SYS_EXEC` closes all current VFS descriptors before switching to the new image.
+- Blue control: successful `SYS_EXEC` closes only process-local descriptors marked `SYS_O_CLOEXEC`; ordinary descriptors intentionally survive image replacement. Exit closes the full local table.
+- Verification gate: `make test-process-fd` plus `make test-red-team`
 - Verification gate: `make test-red-team`
 
 Status: blocked by current blue control; keep regression probe active.

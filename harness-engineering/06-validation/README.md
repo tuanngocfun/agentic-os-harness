@@ -147,10 +147,10 @@ Current claim policy:
 - `block_device` is claimable only as a reserved, mapped ramdisk block device through `make test-ramdisk`.
 - `filesystem` is claimable only as the kernel VFS + flat SimpleFS runtime gate through `make test-vfs`; this does not claim file syscalls, ELF loading, persistence, directories, delete/rename, or POSIX semantics.
 - `elf_loader` is claimable as ELF32/i386 loading through `make test-elf-loader` and the VFS-backed exec routes: header/program-header validation, PT_LOAD materialization, BSS zero-fill, rejection paths, and transfer into a ring-3 entry. This does not claim argv/envp, dynamic linking, or persistent executable storage.
-- `process` is claimable for process-record setup, per-process CR3 switching, syscall/brk/exec entry, true fork parent/child return, blocking wait, exit-to-scheduler, zombie reap, copied-address-space isolation, and exec image replacement through `make test-usermode`, `make test-address-space`, `make test-process-syscall`, and `make test-process-lifecycle`.
+- `process` is claimable for process-record setup, per-process CR3 switching, syscall/brk/exec entry, true fork parent/child return, blocking wait, exit-to-scheduler, zombie reap, copied-address-space isolation, exec image replacement, and per-process descriptor isolation/inheritance/CLOEXEC/exit cleanup through `make test-usermode`, `make test-address-space`, `make test-process-syscall`, `make test-process-lifecycle`, and `make test-process-fd`.
 - `user_mode` is claimable only as a ring-3 transition and user/supervisor page-fault proof through `make test-usermode`.
 - Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. `scripts/shell_io_test.sh` is the separate targeted route for `echo ok`; argument-bearing commands beyond that need their own unambiguous I/O proof.
-- Copy-on-write fork, `waitpid` options, argv/envp, signals, per-process descriptor tables, persistent storage, networking, graphics mode, and additional shell breadth remain unclaimed until they have targeted runtime gates.
+- Copy-on-write fork, `waitpid` options, argv/envp, signals, persistent storage, networking, graphics mode, and additional shell breadth remain unclaimed until they have targeted runtime gates.
 - Security posture is `known_red_team_attacks_blocked_security_not_complete`; `make test-red-team` currently proves the known attack probes are blocked and writes JSONL evidence.
 
 ## Build-Config Rebuild Protocol

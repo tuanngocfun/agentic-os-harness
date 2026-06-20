@@ -62,15 +62,15 @@ SimpleFS initially accepted relative names such as `relative` even though the cl
 
 Preemptive tasks use interrupt-frame stacks and must not enter the cooperative `yield()` path, which expects a different context layout. The current probe sets a preemptive task as current, places another runnable task in the ready queue, calls `yield()`, and expects no scheduling or context switch to occur.
 
-## RT-EXEC-002: Exec File Descriptor Leak
+## RT-EXEC-002: Exec Close-On-Exec Bypass
 
-- Subsystem: process exec / VFS descriptor table
+- Subsystem: process exec / per-process descriptor table
 - Severity: high
 - Attack/defense gate: `make test-red-team`
 - Evidence marker: `RED_EXEC_FD_LEAK_BLOCKED`
 - Finding log ID: `RT-EXEC-002`
 
-The current OS still has a global VFS descriptor table, so an old process image could leave a writable descriptor open across `SYS_EXEC`. The current probe opens a file before exec, then the new ELF image attempts to write through the inherited fd and expects `SYSCALL_EBADF`.
+The current OS has per-process descriptor tables backed by refcounted VFS open-file descriptions. The probe opens a writable descriptor with `SYS_O_CLOEXEC`, executes a new image, then requires the new ELF entry's write through that descriptor to return `SYSCALL_EBADF`. Descriptors without CLOEXEC intentionally survive exec.
 
 ## RT-EXEC-003: Failed Exec Resource Leak
 
