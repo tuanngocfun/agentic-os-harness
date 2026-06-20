@@ -225,7 +225,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-shell-io
+test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-process-fd test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-shell-io
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -304,6 +304,10 @@ test-process-syscall:
 test-process-lifecycle:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_PROCESS_LIFECYCLE_SELFTEST
 	@bash scripts/process_lifecycle_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
+test-process-fd:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_PROCESS_FD_SELFTEST
+	@bash scripts/process_fd_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
 test-e820-frame:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_E820_SELFTEST
