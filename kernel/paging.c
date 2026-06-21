@@ -89,41 +89,64 @@ void paging_init(void) {
 }
 
 void paging_map_page(uint32_t virtual_addr, uint32_t physical_addr, uint32_t flags) {
-    paging_map_page_in_directory((uint32_t)active_page_directory, virtual_addr, physical_addr, flags);
+    (void)paging_map_page_in_directory((uint32_t)active_page_directory,
+                                       virtual_addr, physical_addr, flags);
 }
 
-void paging_map_page_in_directory(uint32_t cr3, uint32_t virtual_addr, uint32_t physical_addr, uint32_t flags) {
+int paging_map_page_in_directory(uint32_t cr3, uint32_t virtual_addr,
+                                 uint32_t physical_addr, uint32_t flags) {
     uint32_t *directory = (uint32_t *)(cr3 & 0xFFFFF000);
     uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
     uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
-
     uint32_t *page_table;
+
+    if (!cr3 || (physical_addr & (PAGE_SIZE - 1)) != 0) {
+        return 0;
+    }
+
     if (!(directory[dir_index] & PAGE_PRESENT)) {
         page_table = allocator_alloc_page_table();
-        if (!page_table) return;
-        directory[dir_index] = ((uint32_t)page_table) | PAGE_PRESENT | PAGE_WRITABLE | (flags & PAGE_USER);
+        if (!page_table) {
+            return 0;
+        }
+        directory[dir_index] = ((uint32_t)page_table) | PAGE_PRESENT |
+                               PAGE_WRITABLE | (flags & PAGE_USER);
     } else if (flags & PAGE_USER) {
         directory[dir_index] |= PAGE_USER;
     }
 
     page_table = (uint32_t *)(directory[dir_index] & 0xFFFFF000);
-    page_table[table_index] = (physical_addr & 0xFFFFF000) | (flags & 0x07) | PAGE_PRESENT;
+    page_table[table_index] = (physical_addr & 0xFFFFF000) |
+                              (flags & 0xFFF) | PAGE_PRESENT;
 
-    invlpg(virtual_addr);
+    if (directory == active_page_directory) {
+        invlpg(virtual_addr);
+    }
+    return 1;
 }
 
-void paging_unmap_page(uint32_t virtual_addr) {
+uint32_t paging_unmap_page_in_directory(uint32_t cr3, uint32_t virtual_addr) {
+    uint32_t *directory = (uint32_t *)(cr3 & 0xFFFFF000);
     uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
     uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
 
-    if (!(active_page_directory[dir_index] & PAGE_PRESENT)) {
-        return;
+    if (!cr3 || !(directory[dir_index] & PAGE_PRESENT)) {
+        return 0;
     }
 
-    uint32_t *page_table = (uint32_t *)(active_page_directory[dir_index] & 0xFFFFF000);
-    page_table[table_index] = 0x02;
+    uint32_t *page_table = (uint32_t *)(directory[dir_index] & 0xFFFFF000);
+    uint32_t old_entry = page_table[table_index];
+    page_table[table_index] = PAGE_WRITABLE;
 
-    invlpg(virtual_addr);
+    if (directory == active_page_directory) {
+        invlpg(virtual_addr);
+    }
+    return old_entry & 0xFFFFF000;
+}
+
+void paging_unmap_page(uint32_t virtual_addr) {
+    (void)paging_unmap_page_in_directory((uint32_t)active_page_directory,
+                                         virtual_addr);
 }
 
 int paging_is_mapped(uint32_t virtual_addr) {
@@ -164,20 +187,41 @@ int paging_is_user_writable(uint32_t virtual_addr) {
            (PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE);
 }
 
-uint32_t paging_get_physical_address(uint32_t virtual_addr) {
+uint32_t paging_get_physical_address_in_directory(uint32_t cr3,
+                                                  uint32_t virtual_addr) {
+    uint32_t *directory = (uint32_t *)(cr3 & 0xFFFFF000);
     uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
     uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
 
-    if (!(active_page_directory[dir_index] & PAGE_PRESENT)) {
+    if (!cr3 || !(directory[dir_index] & PAGE_PRESENT)) {
         return 0;
     }
 
-    uint32_t *page_table = (uint32_t *)(active_page_directory[dir_index] & 0xFFFFF000);
+    uint32_t *page_table = (uint32_t *)(directory[dir_index] & 0xFFFFF000);
     if (!(page_table[table_index] & PAGE_PRESENT)) {
         return 0;
     }
 
     return (page_table[table_index] & 0xFFFFF000) | (virtual_addr & 0xFFF);
+}
+
+uint32_t paging_get_page_flags_in_directory(uint32_t cr3,
+                                             uint32_t virtual_addr) {
+    uint32_t *directory = (uint32_t *)(cr3 & 0xFFFFF000);
+    uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
+    uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
+
+    if (!cr3 || !(directory[dir_index] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    uint32_t *page_table = (uint32_t *)(directory[dir_index] & 0xFFFFF000);
+    return page_table[table_index] & 0xFFF;
+}
+
+uint32_t paging_get_physical_address(uint32_t virtual_addr) {
+    return paging_get_physical_address_in_directory(
+        (uint32_t)active_page_directory, virtual_addr);
 }
 
 uint32_t paging_get_current_directory(void) {
@@ -257,57 +301,70 @@ void paging_destroy_address_space(uint32_t cr3) {
     frame_free((uint32_t)directory);
 }
 
-static void paging_destroy_cloned_directory(uint32_t *directory) {
+static void paging_destroy_clone_skeleton(uint32_t *directory) {
     if (!directory) {
         return;
     }
 
-    for (int i = 0; i < 1024; i++) {
+    for (int i = 0; i < TABLES_PER_DIR; i++) {
         if (!(directory[i] & PAGE_PRESENT)) {
+            continue;
+        }
+        if (i != 0 && !(directory[i] & PAGE_USER)) {
+            continue;
+        }
+
+        frame_release(directory[i] & 0xFFFFF000);
+        directory[i] = PAGE_WRITABLE;
+    }
+    frame_release((uint32_t)directory);
+}
+
+static void paging_destroy_clone_with_refs(uint32_t *directory) {
+    if (!directory) {
+        return;
+    }
+
+    for (int i = 0; i < TABLES_PER_DIR; i++) {
+        if (!(directory[i] & PAGE_PRESENT)) {
+            continue;
+        }
+        if (i != 0 && !(directory[i] & PAGE_USER)) {
             continue;
         }
 
         uint32_t *table = (uint32_t *)(directory[i] & 0xFFFFF000);
-        if (table == first_page_table ||
-            (i != 0 && !(directory[i] & PAGE_USER))) {
-            continue;
-        }
-
-        for (int j = 0; j < 1024; j++) {
+        for (int j = 0; j < PAGES_PER_TABLE; j++) {
             if ((table[j] & (PAGE_PRESENT | PAGE_USER)) ==
                 (PAGE_PRESENT | PAGE_USER)) {
-                frame_free(table[j] & 0xFFFFF000);
+                frame_release(table[j] & 0xFFFFF000);
+                table[j] = PAGE_WRITABLE;
             }
         }
-        frame_free((uint32_t)table);
-        directory[i] = 0x02;
+        frame_release((uint32_t)table);
+        directory[i] = PAGE_WRITABLE;
     }
-
-    frame_free((uint32_t)directory);
+    frame_release((uint32_t)directory);
 }
 
 uint32_t paging_clone_directory(uint32_t src_cr3) {
     uint32_t *src_dir = (uint32_t *)(src_cr3 & 0xFFFFF000);
+    uint32_t *new_dir;
 
     if (!src_cr3 || !kernel_scratch_table) {
         return 0;
     }
 
-    uint32_t *new_dir = allocator_alloc_page_table();
+    new_dir = allocator_alloc_page_table();
     if (!new_dir) {
         return 0;
     }
 
-    for (int i = 0; i < 1024; i++) {
+    /* Phase 1: allocate every child table and validate source ownership. */
+    for (int i = 0; i < TABLES_PER_DIR; i++) {
         if (!(src_dir[i] & PAGE_PRESENT)) {
             continue;
         }
-
-        /*
-         * Supervisor-only tables are shared. Directory zero is always copied
-         * because process address spaces own their low identity table and may
-         * also contain user mappings used by the teaching selftests.
-         */
         if (i != 0 && !(src_dir[i] & PAGE_USER)) {
             new_dir[i] = src_dir[i];
             continue;
@@ -316,37 +373,127 @@ uint32_t paging_clone_directory(uint32_t src_cr3) {
         uint32_t *src_table = (uint32_t *)(src_dir[i] & 0xFFFFF000);
         uint32_t *new_table = allocator_alloc_page_table();
         if (!new_table) {
-            paging_destroy_cloned_directory(new_dir);
+            paging_destroy_clone_skeleton(new_dir);
             return 0;
         }
+        new_dir[i] = ((uint32_t)new_table & 0xFFFFF000) |
+                     (src_dir[i] & 0xFFF);
 
-        new_dir[i] = ((uint32_t)new_table & 0xFFFFF000) | (src_dir[i] & 0xFFF);
+        for (int j = 0; j < PAGES_PER_TABLE; j++) {
+            if ((src_table[j] & (PAGE_PRESENT | PAGE_USER)) ==
+                (PAGE_PRESENT | PAGE_USER)) {
+                uint32_t refs = frame_get_refcount(src_table[j] & 0xFFFFF000);
+                if (refs == 0 || refs == 0xFFFFu) {
+                    paging_destroy_clone_skeleton(new_dir);
+                    return 0;
+                }
+            }
+        }
+    }
 
-        for (int j = 0; j < 1024; j++) {
+    /* Phase 2a: retain all shared frames while the parent is untouched. */
+    for (int i = 0; i < TABLES_PER_DIR; i++) {
+        if (!(new_dir[i] & PAGE_PRESENT) ||
+            (i != 0 && !(new_dir[i] & PAGE_USER))) {
+            continue;
+        }
+
+        uint32_t *src_table = (uint32_t *)(src_dir[i] & 0xFFFFF000);
+        uint32_t *new_table = (uint32_t *)(new_dir[i] & 0xFFFFF000);
+        for (int j = 0; j < PAGES_PER_TABLE; j++) {
             if (!(src_table[j] & PAGE_PRESENT)) {
                 continue;
             }
-
             if (!(src_table[j] & PAGE_USER)) {
                 new_table[j] = src_table[j];
                 continue;
             }
-
-            uint32_t new_page_phys = frame_alloc();
-            if (!new_page_phys) {
-                paging_destroy_cloned_directory(new_dir);
+            if (!frame_retain(src_table[j] & 0xFFFFF000)) {
+                paging_destroy_clone_with_refs(new_dir);
                 return 0;
             }
-
-            if (!copy_physical_page(src_table[j] & 0xFFFFF000, new_page_phys)) {
-                frame_free(new_page_phys);
-                paging_destroy_cloned_directory(new_dir);
-                return 0;
-            }
-
-            new_table[j] = (new_page_phys & 0xFFFFF000) | (src_table[j] & 0xFFF);
+            new_table[j] = src_table[j];
         }
     }
 
+    /* Phase 2b: commit writable user mappings as read-only COW. */
+    for (int i = 0; i < TABLES_PER_DIR; i++) {
+        if (!(new_dir[i] & PAGE_PRESENT) ||
+            (i != 0 && !(new_dir[i] & PAGE_USER))) {
+            continue;
+        }
+
+        uint32_t *src_table = (uint32_t *)(src_dir[i] & 0xFFFFF000);
+        uint32_t *new_table = (uint32_t *)(new_dir[i] & 0xFFFFF000);
+        for (int j = 0; j < PAGES_PER_TABLE; j++) {
+            uint32_t entry = src_table[j];
+            if ((entry & (PAGE_PRESENT | PAGE_USER)) !=
+                (PAGE_PRESENT | PAGE_USER)) {
+                continue;
+            }
+            if (entry & (PAGE_WRITABLE | PAGE_COW)) {
+                entry = (entry & ~PAGE_WRITABLE) | PAGE_COW;
+                src_table[j] = entry;
+                new_table[j] = entry;
+            }
+        }
+    }
+
+    if (src_dir == active_page_directory) {
+        load_page_directory(active_page_directory);
+    }
     return (uint32_t)new_dir;
+}
+
+int paging_resolve_cow_fault(uint32_t cr3, uint32_t virtual_addr) {
+    uint32_t *directory = (uint32_t *)(cr3 & 0xFFFFF000);
+    uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
+    uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
+    uint32_t *table;
+    uint32_t entry;
+    uint32_t old_phys;
+    uint32_t refs;
+
+    if (!cr3 || !(directory[dir_index] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    table = (uint32_t *)(directory[dir_index] & 0xFFFFF000);
+    entry = table[table_index];
+    if ((entry & (PAGE_PRESENT | PAGE_USER | PAGE_COW)) !=
+            (PAGE_PRESENT | PAGE_USER | PAGE_COW) ||
+        (entry & PAGE_WRITABLE)) {
+        return 0;
+    }
+
+    old_phys = entry & 0xFFFFF000;
+    refs = frame_get_refcount(old_phys);
+    if (refs == 0) {
+        return 0;
+    }
+
+    if (refs == 1) {
+        table[table_index] = (entry | PAGE_WRITABLE) & ~PAGE_COW;
+        if (directory == active_page_directory) {
+            invlpg(virtual_addr);
+        }
+        return 1;
+    }
+
+    uint32_t new_phys = frame_alloc();
+    if (!new_phys) {
+        return 0;
+    }
+    if (!copy_physical_page(old_phys, new_phys)) {
+        frame_release(new_phys);
+        return 0;
+    }
+
+    table[table_index] = new_phys |
+                         (((entry & 0xFFF) | PAGE_WRITABLE) & ~PAGE_COW);
+    if (directory == active_page_directory) {
+        invlpg(virtual_addr);
+    }
+    frame_release(old_phys);
+    return 1;
 }
