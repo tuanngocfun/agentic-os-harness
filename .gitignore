@@ -19,8 +19,9 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-# Editor
-.vscode/
+# Editor (track only the reproducible C/C++ toolchain profile)
+.vscode/*
+!.vscode/c_cpp_properties.json
 .idea/
 .DS_Store
 

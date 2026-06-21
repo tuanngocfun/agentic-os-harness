@@ -16,7 +16,8 @@ FINDINGS_DIR="$BUILD_DIR/red-team"
 FINDINGS_LOG="$FINDINGS_DIR/findings.jsonl"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
 QEMU="${QEMU:-qemu-system-i386}"
-QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-}"
+source "$(dirname "$0")/qemu_runtime.sh"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -41,6 +42,7 @@ write_findings() {
   mkdir -p "$FINDINGS_DIR"
   : > "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-HARNESS-001","subsystem":"syscall-test-harness","severity":"high","status":"blocked_by_blue_team","evidence_marker":"RED_MARKER_FORGERY_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-harness-001"}' >> "$FINDINGS_LOG"
+  printf '%s\n' '{"id":"RT-HARNESS-003","subsystem":"syscall-test-marker-authorization","severity":"high","status":"blocked_by_blue_team","evidence_marker":"RED_MARKER_REPLAY_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-harness-003"}' >> "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-EXEC-001","subsystem":"process-exec","severity":"high","status":"blocked_by_blue_team","evidence_marker":"RED_EXEC_RESIDUAL_MAPPING_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-exec-001"}' >> "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-FS-001","subsystem":"simplefs","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_SIMPLEFS_DOS_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-fs-001"}' >> "$FINDINGS_LOG"
   printf '%s\n' '{"id":"RT-FS-002","subsystem":"simplefs-namespace","severity":"medium","status":"blocked_by_blue_team","evidence_marker":"RED_VFS_NAMESPACE_BLOCKED","patch_playbook":"harness-engineering/blue-team/PATCH_PLAYBOOKS.md#rt-fs-002"}' >> "$FINDINGS_LOG"
@@ -66,6 +68,9 @@ mkdir -p "$BUILD_DIR" "$FINDINGS_DIR"
 : > "$QEMU_LOG"
 : > "$FINDINGS_LOG"
 
+qemu_runtime_preflight
+qemu_runtime_begin
+
 set +e
 timeout "$TIMEOUT_SECONDS" "$QEMU" \
   -L "$QEMU_BIOS_DIR" \
@@ -79,6 +84,8 @@ timeout "$TIMEOUT_SECONDS" "$QEMU" \
   > "$QEMU_LOG" 2>&1
 qemu_status=$?
 set -e
+
+qemu_runtime_verify "$qemu_status" timeout
 
 case "$qemu_status" in
   124) ;;
@@ -95,6 +102,7 @@ failure_present "RED_TEAM_FAIL" && fail "red-team selftest reported RED_TEAM_FAI
 marker_present "RED_TEAM_TEST" || fail "red-team test did not start"
 marker_present "SYSCALL_FILE_OK" && fail "marker forgery emitted a trusted non-red marker"
 marker_present "RED_MARKER_FORGERY_BLOCKED" || fail "RT-HARNESS-001 attack was not blocked"
+marker_present "RED_MARKER_REPLAY_BLOCKED" || fail "RT-HARNESS-003 attack was not blocked"
 marker_present "RED_SYSCALL_PRIVILEGE_BLOCKED" || fail "RT-SYSCALL-001 attack was not blocked"
 marker_present "RED_EXEC_RESIDUAL_MAPPING_BLOCKED" || fail "RT-EXEC-001 attack was not blocked"
 marker_present "RED_SCHED_YIELD_MIXING_BLOCKED" || fail "RT-SCHED-001 attack was not blocked"
@@ -111,6 +119,7 @@ write_findings
 
 [ -s "$FINDINGS_LOG" ] || fail "missing red-team findings JSONL"
 grep -Fq '"id":"RT-HARNESS-001"' "$FINDINGS_LOG" || fail "missing RT-HARNESS-001 finding"
+grep -Fq '"id":"RT-HARNESS-003"' "$FINDINGS_LOG" || fail "missing RT-HARNESS-003 finding"
 grep -Fq '"id":"RT-EXEC-001"' "$FINDINGS_LOG" || fail "missing RT-EXEC-001 finding"
 grep -Fq '"id":"RT-FS-001"' "$FINDINGS_LOG" || fail "missing RT-FS-001 finding"
 grep -Fq '"id":"RT-FS-002"' "$FINDINGS_LOG" || fail "missing RT-FS-002 finding"
@@ -123,6 +132,7 @@ grep -Fq '"id":"RT-SYSCALL-001"' "$FINDINGS_LOG" || fail "missing RT-SYSCALL-001
 grep -Fq '"id":"RT-SCHED-001"' "$FINDINGS_LOG" || fail "missing RT-SCHED-001 finding"
 
 echo "[PASS] RT-HARNESS-001 marker forgery blocked"
+echo "[PASS] RT-HARNESS-003 retired-token and replay attacks blocked"
 echo "[PASS] RT-SYSCALL-001 test-only syscall surface blocked"
 echo "[PASS] RT-EXEC-001 exec residual mapping blocked"
 echo "[PASS] RT-SCHED-001 preemptive yield mixing blocked"

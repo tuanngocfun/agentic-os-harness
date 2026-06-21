@@ -1,0 +1,26 @@
+{
+    "folders": [
+        {
+            "name": "agentic-os",
+            "path": "."
+        }
+    ],
+    "settings": {
+        "C_Cpp.default.compilerPath": "/home/ngocnt/opt/cross/bin/i686-elf-gcc",
+        "C_Cpp.default.compilerArgs": [
+            "-ffreestanding",
+            "-fno-builtin",
+            "-fno-pic",
+            "-fno-pie"
+        ],
+        "C_Cpp.default.includePath": [
+            "${workspaceFolder}/include",
+            "${workspaceFolder}/kernel"
+        ],
+        "C_Cpp.default.cStandard": "gnu11",
+        "C_Cpp.default.intelliSenseMode": "gcc-x86",
+        "files.associations": {
+            "*.asm": "asm"
+        }
+    }
+}

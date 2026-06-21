@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "name": "Agentic OS (i686 freestanding)",
+            "compilerPath": "/home/ngocnt/opt/cross/bin/i686-elf-gcc",
+            "compilerArgs": [
+                "-ffreestanding",
+                "-fno-builtin",
+                "-fno-pic",
+                "-fno-pie"
+            ],
+            "includePath": [
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/kernel"
+            ],
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/kernel"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "cStandard": "gnu11",
+            "intelliSenseMode": "gcc-x86"
+        }
+    ],
+    "version": 4
+}

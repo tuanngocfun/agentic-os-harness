@@ -225,13 +225,17 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-process-fd test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-shell-io
+test-deep: test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-shell-io
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
 
 test-shell: $(OS_IMG)
 	@bash scripts/shell_test.sh
+
+test-marker-surface:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_MARKER_SURFACE_SELFTEST
+	@bash scripts/marker_surface_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
 test-syscall:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_SYSCALL_ABI_SELFTEST
@@ -305,6 +309,10 @@ test-process-lifecycle:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_PROCESS_LIFECYCLE_SELFTEST
 	@bash scripts/process_lifecycle_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
+test-exec-args:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_EXEC_ARGS_SELFTEST
+	@bash scripts/exec_args_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 test-process-fd:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_PROCESS_FD_SELFTEST
 	@bash scripts/process_fd_test.sh; status=$$?; $(MAKE) -B all; exit $$status
@@ -333,6 +341,18 @@ test-red-team:
 
 test-blue-team: test-red-team
 
+test-static-analysis:
+	@bash scripts/static_analysis_test.sh
+
+test-qemu-preflight: all
+	@bash scripts/qemu_runtime_preflight_test.sh
+
+test-red-team-tooling: test-address-space
+	@bash scripts/tooling_red_team_test.sh
+
+test-meta-loop: test-red-team-tooling test-red-team
+	@bash harness-engineering/.agent/skills/regression-validation/scripts/check_harness_contract.sh
+
 test-shell-io: $(OS_IMG)
 	@bash scripts/shell_io_test.sh
 
@@ -343,4 +363,4 @@ clean: guard-paths
 
 FORCE:
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-red-team test-blue-team test-shell-io clean FORCE
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-red-team test-blue-team test-static-analysis test-qemu-preflight test-red-team-tooling test-meta-loop test-shell-io clean FORCE
