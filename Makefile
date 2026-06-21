@@ -231,7 +231,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-shell-io
+test-deep: test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-vm test-shell-io
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -341,6 +341,10 @@ test-scheduler-safety:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_SCHEDULER_SAFETY_SELFTEST
 	@bash scripts/scheduler_safety_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
+test-vm:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_VM_SELFTEST
+	@bash scripts/vm_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 test-red-team:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_REDTEAM_SELFTEST
 	@bash scripts/red_team_test.sh; status=$$?; $(MAKE) -B all; exit $$status
@@ -369,4 +373,4 @@ clean: guard-paths
 
 FORCE:
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-red-team test-blue-team test-static-analysis test-qemu-preflight test-red-team-tooling test-meta-loop test-shell-io clean FORCE
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-vm test-red-team test-blue-team test-static-analysis test-qemu-preflight test-red-team-tooling test-meta-loop test-shell-io clean FORCE

@@ -13,6 +13,7 @@
 #include "vfs.h"
 #include "elf.h"
 #include "paging.h"
+#include "vm.h"
 #include "tss.h"
 #include "syscall.h"
 #include "process.h"
@@ -404,7 +405,7 @@ static uint32_t address_space_read_test_value(void) {
 
 #if defined(ENABLE_USERMODE_SELFTEST) || defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || \
     defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
 extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
 #endif
 
@@ -433,7 +434,7 @@ static __attribute__((noreturn)) void usermode_selftest_entry(void) {
 
 #if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || \
     defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || \
-    defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST)
+    defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
 static int allow_test_marker_range(struct process *proc, uint32_t first, uint32_t last) {
     if (!proc || first == 0 || first > last || last > 64) {
         return 0;
@@ -539,7 +540,7 @@ static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
 #endif
 
 #if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
 static uint32_t syscall3(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     asm volatile(
         "int $0x80"
@@ -702,7 +703,7 @@ static __attribute__((noreturn)) void syscall_file_user_entry(void) {
 #endif
 
 #if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
 static void map_user_code_span(uint32_t start, uint32_t end) {
     uint32_t first = start & 0xFFFFF000;
     uint32_t last = end & 0xFFFFF000;
@@ -1196,6 +1197,263 @@ static __attribute__((noreturn)) void exec_args_user_entry(void) {
 #endif
 
 
+#ifdef ENABLE_VM_SELFTEST
+#define VM_TEST_DATA_VA PROCESS_HEAP_START
+#define VM_TEST_PARENT_VALUE 0x13579BDFu
+#define VM_TEST_CHILD_VALUE 0x2468ACE0u
+#define VM_TEST_CHILD_STATUS 42u
+
+static int vm_test_frame_refcounts(void) {
+    uint32_t free_before = frame_get_free_count();
+    uint32_t phys = frame_alloc();
+
+    if (!phys || frame_get_refcount(phys) != 1 ||
+        !frame_retain(phys) || frame_get_refcount(phys) != 2 ||
+        !frame_release(phys) || frame_get_refcount(phys) != 1 ||
+        !frame_release(phys) || frame_is_allocated(phys) ||
+        frame_release(phys)) {
+        if (phys && frame_is_allocated(phys)) {
+            while (frame_get_refcount(phys) > 0) {
+                if (!frame_release(phys)) {
+                    break;
+                }
+            }
+        }
+        return 0;
+    }
+    return frame_get_free_count() == free_before;
+}
+
+static int vm_test_clone_rollback(void) {
+    uint32_t parent_cr3 = paging_create_address_space();
+    uint32_t phys = frame_alloc();
+    uint32_t child_cr3;
+    uint32_t flags_before;
+    uint32_t free_before;
+    int ok;
+
+    if (!parent_cr3 || !phys ||
+        !paging_map_page_in_directory(parent_cr3, VM_TEST_DATA_VA, phys,
+                                      PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER)) {
+        if (phys) {
+            frame_release(phys);
+        }
+        if (parent_cr3) {
+            paging_destroy_address_space(parent_cr3);
+        }
+        return 0;
+    }
+
+    flags_before =
+        paging_get_page_flags_in_directory(parent_cr3, VM_TEST_DATA_VA);
+    free_before = frame_get_free_count();
+    frame_test_fail_after(1);
+    child_cr3 = paging_clone_directory(parent_cr3);
+    frame_test_fail_after(-1);
+
+    ok = child_cr3 == 0 &&
+         paging_get_physical_address_in_directory(parent_cr3,
+                                                  VM_TEST_DATA_VA) == phys &&
+         paging_get_page_flags_in_directory(parent_cr3,
+                                             VM_TEST_DATA_VA) == flags_before &&
+         frame_get_refcount(phys) == 1 &&
+         frame_get_free_count() == free_before;
+
+    if (child_cr3) {
+        paging_destroy_address_space(child_cr3);
+    }
+    paging_destroy_address_space(parent_cr3);
+    return ok;
+}
+
+static int vm_test_cow_oom_rollback(void) {
+    uint32_t parent_cr3 = paging_create_address_space();
+    uint32_t phys = frame_alloc();
+    uint32_t child_cr3;
+    uint32_t free_before;
+    uint32_t flags_before;
+    int result;
+    int ok;
+
+    if (!parent_cr3 || !phys ||
+        !paging_map_page_in_directory(parent_cr3, VM_TEST_DATA_VA, phys,
+                                      PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER)) {
+        if (phys) {
+            frame_release(phys);
+        }
+        if (parent_cr3) {
+            paging_destroy_address_space(parent_cr3);
+        }
+        return 0;
+    }
+
+    child_cr3 = paging_clone_directory(parent_cr3);
+    if (!child_cr3) {
+        paging_destroy_address_space(parent_cr3);
+        return 0;
+    }
+
+    flags_before =
+        paging_get_page_flags_in_directory(child_cr3, VM_TEST_DATA_VA);
+    free_before = frame_get_free_count();
+    frame_test_fail_after(0);
+    result = paging_resolve_cow_fault(child_cr3, VM_TEST_DATA_VA);
+    frame_test_fail_after(-1);
+
+    ok = result == 0 &&
+         (flags_before & PAGE_COW) &&
+         !(flags_before & PAGE_WRITABLE) &&
+         paging_get_page_flags_in_directory(child_cr3,
+                                             VM_TEST_DATA_VA) == flags_before &&
+         paging_get_physical_address_in_directory(child_cr3,
+                                                  VM_TEST_DATA_VA) == phys &&
+         frame_get_refcount(phys) == 2 &&
+         frame_get_free_count() == free_before;
+
+    paging_destroy_address_space(child_cr3);
+    paging_destroy_address_space(parent_cr3);
+    return ok;
+}
+
+static int vm_test_demand_oom_rollback(void) {
+    struct process proc;
+    uint32_t kernel_cr3 = paging_get_current_directory();
+    uint32_t proc_cr3 = paging_create_address_space();
+    uint32_t free_before;
+    enum vm_fault_result result;
+    int ok;
+
+    if (!proc_cr3) {
+        return 0;
+    }
+
+    memset(&proc, 0, sizeof(proc));
+    proc.cr3 = proc_cr3;
+    proc.heap_start = PROCESS_HEAP_START;
+    proc.heap_end = PROCESS_HEAP_START + VM_PAGE_SIZE;
+
+    paging_switch_directory(proc_cr3);
+    free_before = frame_get_free_count();
+    frame_test_fail_after(0);
+    result = vm_handle_page_fault(&proc, PROCESS_HEAP_START,
+                                  VM_FAULT_WRITE | VM_FAULT_USER);
+    frame_test_fail_after(-1);
+    ok = result == VM_FAULT_OOM &&
+         !paging_is_mapped(PROCESS_HEAP_START) &&
+         frame_get_free_count() == free_before;
+    paging_switch_directory(kernel_cr3);
+    paging_destroy_address_space(proc_cr3);
+    return ok;
+}
+
+static int vm_kernel_rollback_selftests(void) {
+    int refcount_ok = vm_test_frame_refcounts();
+    int clone_ok = vm_test_clone_rollback();
+    int cow_oom_ok = vm_test_cow_oom_rollback();
+    int demand_oom_ok = vm_test_demand_oom_rollback();
+
+    if (clone_ok) {
+        serial_puts("VM_CLONE_ROLLBACK_OK\n");
+    }
+    if (cow_oom_ok) {
+        serial_puts("VM_COW_OOM_ROLLBACK_OK\n");
+    }
+    if (demand_oom_ok) {
+        serial_puts("VM_DEMAND_OOM_ROLLBACK_OK\n");
+    }
+    return refcount_ok && clone_ok && cow_oom_ok && demand_oom_ok;
+}
+
+static __attribute__((noreturn)) void vm_user_entry(void) {
+    volatile uint32_t *heap = (volatile uint32_t *)VM_TEST_DATA_VA;
+    volatile uint32_t *guard =
+        (volatile uint32_t *)USER_STACK_GUARD_BOTTOM;
+    uint32_t status = 0;
+    uint32_t child;
+
+    if (syscall3(SYS_BRK, PROCESS_HEAP_START + VM_PAGE_SIZE, 0, 0) !=
+        PROCESS_HEAP_START + VM_PAGE_SIZE) {
+        syscall_marker(SYSCALL_MARK_VM_FAIL);
+        while (1) {
+        }
+    }
+
+    if (*heap != 0 ||
+        syscall_marker(SYSCALL_MARK_VM_DEMAND_ZERO) != SYSCALL_SUCCESS) {
+        syscall_marker(SYSCALL_MARK_VM_FAIL);
+        while (1) {
+        }
+    }
+    *heap = VM_TEST_PARENT_VALUE;
+
+    child = syscall3(SYS_FORK, 0, 0, 0);
+    if ((int32_t)child < 0) {
+        syscall_marker(SYSCALL_MARK_VM_FAIL);
+        while (1) {
+        }
+    }
+    if (child == 0) {
+        if (*heap != VM_TEST_PARENT_VALUE) {
+            syscall_marker(SYSCALL_MARK_VM_FAIL);
+            (void)syscall3(SYS_EXIT, 1, 0, 0);
+        }
+        *heap = VM_TEST_CHILD_VALUE;
+        if (syscall_marker(SYSCALL_MARK_VM_COW_SPLIT) != SYSCALL_SUCCESS) {
+            (void)syscall3(SYS_EXIT, 2, 0, 0);
+        }
+        (void)syscall3(SYS_EXIT, VM_TEST_CHILD_STATUS, 0, 0);
+        while (1) {
+        }
+    }
+
+    if (syscall_marker(SYSCALL_MARK_VM_COW_SHARED) != SYSCALL_SUCCESS) {
+        syscall_marker(SYSCALL_MARK_VM_FAIL);
+        while (1) {
+        }
+    }
+    if (syscall3(SYS_WAIT, (uint32_t)&status, 0, 0) == SYSCALL_ECHILD ||
+        status != VM_TEST_CHILD_STATUS || *heap != VM_TEST_PARENT_VALUE) {
+        syscall_marker(SYSCALL_MARK_VM_FAIL);
+        while (1) {
+        }
+    }
+    if (syscall_marker(SYSCALL_MARK_VM_COW_ISOLATION) != SYSCALL_SUCCESS ||
+        syscall_marker(SYSCALL_MARK_VM_FRAME_ACCOUNTING) != SYSCALL_SUCCESS) {
+        syscall_marker(SYSCALL_MARK_VM_FAIL);
+        while (1) {
+        }
+    }
+
+    status = 0;
+    child = syscall3(SYS_FORK, 0, 0, 0);
+    if ((int32_t)child < 0) {
+        syscall_marker(SYSCALL_MARK_VM_FAIL);
+        while (1) {
+        }
+    }
+    if (child == 0) {
+        *guard = 0xBAD0C0DEu;
+        syscall_marker(SYSCALL_MARK_VM_FAIL);
+        (void)syscall3(SYS_EXIT, 3, 0, 0);
+        while (1) {
+        }
+    }
+
+    if (syscall3(SYS_WAIT, (uint32_t)&status, 0, 0) == SYSCALL_ECHILD ||
+        status != VM_EXIT_GUARD_PAGE ||
+        syscall_marker(SYSCALL_MARK_VM_GUARD_TERMINATION) !=
+            SYSCALL_SUCCESS) {
+        syscall_marker(SYSCALL_MARK_VM_FAIL);
+        while (1) {
+        }
+    }
+
+    syscall_marker(SYSCALL_MARK_VM_DONE);
+    while (1) {
+    }
+}
+#endif
+
 #ifdef ENABLE_REDTEAM_SELFTEST
 #define REDTEAM_STACK_PHYSICAL 0x00960000
 #define REDTEAM_DOS_WRITE_SIZE (SECTOR_SIZE * 32u)
@@ -1211,6 +1469,168 @@ static uint8_t redteam_dos_buf[REDTEAM_DOS_WRITE_SIZE];
 static uint32_t redteam_low_frames[REDTEAM_MAX_LOW_FRAMES];
 
 static __attribute__((noreturn)) void redteam_user_entry(void);
+
+#define REDTEAM_VM_DATA_VA 0x92000000u
+
+static int redteam_vm_cow_alias_blocked_probe(void) {
+    uint32_t kernel_cr3 = paging_get_current_directory();
+    uint32_t parent_cr3 = paging_create_address_space();
+    uint32_t phys = frame_alloc();
+    uint32_t child_cr3 = 0;
+    int ok = 0;
+
+    if (!parent_cr3 || !phys ||
+        !paging_map_page_in_directory(parent_cr3, REDTEAM_VM_DATA_VA, phys,
+                                      PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER)) {
+        goto cleanup;
+    }
+
+    paging_switch_directory(parent_cr3);
+    *(volatile uint32_t *)REDTEAM_VM_DATA_VA = 0x11112222u;
+    child_cr3 = paging_clone_directory(parent_cr3);
+    if (!child_cr3 ||
+        !(paging_get_page_flags_in_directory(parent_cr3,
+                                              REDTEAM_VM_DATA_VA) & PAGE_COW) ||
+        frame_get_refcount(phys) != 2) {
+        goto cleanup;
+    }
+
+    paging_switch_directory(child_cr3);
+    if (!paging_resolve_cow_fault(child_cr3, REDTEAM_VM_DATA_VA)) {
+        goto cleanup;
+    }
+    *(volatile uint32_t *)REDTEAM_VM_DATA_VA = 0x33334444u;
+
+    paging_switch_directory(parent_cr3);
+    ok = *(volatile uint32_t *)REDTEAM_VM_DATA_VA == 0x11112222u &&
+         paging_get_physical_address_in_directory(parent_cr3,
+                                                  REDTEAM_VM_DATA_VA) !=
+             paging_get_physical_address_in_directory(child_cr3,
+                                                      REDTEAM_VM_DATA_VA) &&
+         frame_get_refcount(
+             paging_get_physical_address_in_directory(parent_cr3,
+                                                      REDTEAM_VM_DATA_VA) &
+             0xFFFFF000) == 1;
+
+cleanup:
+    paging_switch_directory(kernel_cr3);
+    if (child_cr3) {
+        paging_destroy_address_space(child_cr3);
+    }
+    if (parent_cr3) {
+        paging_destroy_address_space(parent_cr3);
+    } else if (phys) {
+        frame_release(phys);
+    }
+    return ok;
+}
+
+static int redteam_vm_refcount_underflow_blocked_probe(void) {
+    uint32_t free_before = frame_get_free_count();
+    uint32_t phys = frame_alloc();
+
+    if (!phys || !frame_release(phys) || frame_release(phys) ||
+        frame_is_allocated(phys)) {
+        if (phys && frame_is_allocated(phys)) {
+            (void)frame_release(phys);
+        }
+        return 0;
+    }
+    return frame_get_free_count() == free_before;
+}
+
+static int redteam_vm_guard_bypass_blocked_probe(void) {
+    struct process proc;
+
+    memset(&proc, 0, sizeof(proc));
+    proc.cr3 = paging_get_current_directory();
+    proc.heap_start = PROCESS_HEAP_START;
+    proc.heap_end = PROCESS_HEAP_START;
+    return !paging_is_mapped(USER_STACK_GUARD_BOTTOM) &&
+           vm_handle_page_fault(&proc, USER_STACK_GUARD_BOTTOM,
+                                VM_FAULT_WRITE | VM_FAULT_USER) ==
+               VM_FAULT_GUARD &&
+           !paging_is_mapped(USER_STACK_GUARD_BOTTOM);
+}
+
+static int redteam_vm_fault_rollback_blocked_probe(void) {
+    uint32_t kernel_cr3 = paging_get_current_directory();
+    uint32_t parent_cr3 = paging_create_address_space();
+    uint32_t phys = frame_alloc();
+    uint32_t child_cr3 = 0;
+    uint32_t demand_cr3 = 0;
+    uint32_t free_before;
+    uint32_t flags_before;
+    struct process proc;
+    int cow_ok = 0;
+    int demand_ok = 0;
+
+    if (!parent_cr3 || !phys ||
+        !paging_map_page_in_directory(parent_cr3, REDTEAM_VM_DATA_VA, phys,
+                                      PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER)) {
+        goto cleanup;
+    }
+    child_cr3 = paging_clone_directory(parent_cr3);
+    if (!child_cr3) {
+        goto cleanup;
+    }
+
+    flags_before =
+        paging_get_page_flags_in_directory(child_cr3, REDTEAM_VM_DATA_VA);
+    free_before = frame_get_free_count();
+    frame_test_fail_after(0);
+    cow_ok = !paging_resolve_cow_fault(child_cr3, REDTEAM_VM_DATA_VA) &&
+             paging_get_page_flags_in_directory(child_cr3,
+                                                 REDTEAM_VM_DATA_VA) ==
+                 flags_before &&
+             paging_get_physical_address_in_directory(child_cr3,
+                                                      REDTEAM_VM_DATA_VA) ==
+                 phys &&
+             frame_get_refcount(phys) == 2 &&
+             frame_get_free_count() == free_before;
+    frame_test_fail_after(-1);
+
+    paging_destroy_address_space(child_cr3);
+    child_cr3 = 0;
+    paging_destroy_address_space(parent_cr3);
+    parent_cr3 = 0;
+
+    demand_cr3 = paging_create_address_space();
+    if (!demand_cr3) {
+        goto cleanup;
+    }
+    memset(&proc, 0, sizeof(proc));
+    proc.cr3 = demand_cr3;
+    proc.heap_start = PROCESS_HEAP_START;
+    proc.heap_end = PROCESS_HEAP_START + VM_PAGE_SIZE;
+    paging_switch_directory(demand_cr3);
+    free_before = frame_get_free_count();
+    frame_test_fail_after(0);
+    demand_ok =
+        vm_handle_page_fault(&proc, PROCESS_HEAP_START,
+                             VM_FAULT_WRITE | VM_FAULT_USER) == VM_FAULT_OOM &&
+        !paging_is_mapped(PROCESS_HEAP_START) &&
+        frame_get_free_count() == free_before;
+    frame_test_fail_after(-1);
+
+cleanup:
+    frame_test_fail_after(-1);
+    paging_switch_directory(kernel_cr3);
+    if (child_cr3) {
+        paging_destroy_address_space(child_cr3);
+    }
+    if (parent_cr3) {
+        paging_destroy_address_space(parent_cr3);
+    } else if (phys && frame_is_allocated(phys) &&
+               frame_get_refcount(phys) == 1) {
+        frame_release(phys);
+    }
+    if (demand_cr3) {
+        paging_destroy_address_space(demand_cr3);
+    }
+    return cow_ok && demand_ok;
+}
+
 
 static int redteam_scheduler_yield_mixing_blocked_probe(void) {
     process_init();
@@ -2295,9 +2715,96 @@ void kernel_main(void) {
     }
 #endif
 
+#ifdef ENABLE_VM_SELFTEST
+    {
+        uint32_t kernel_cr3 = paging_get_current_directory();
+        uint32_t proc_cr3;
+        uint32_t stack_phys;
+        int ready = 0;
+
+        serial_puts("VM_TEST\n");
+        if (!vm_kernel_rollback_selftests()) {
+            serial_puts("VM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+
+        process_init();
+        scheduler_init();
+        struct process *user_proc =
+            process_create((uint32_t)vm_user_entry, 1);
+        proc_cr3 = paging_create_address_space();
+        stack_phys = frame_alloc();
+
+        if (user_proc && proc_cr3 && stack_phys &&
+            allow_test_marker_range(user_proc, SYSCALL_MARK_VM_DEMAND_ZERO,
+                                    SYSCALL_MARK_VM_FAIL)) {
+            process_set_address_space(user_proc, proc_cr3);
+            paging_switch_directory(proc_cr3);
+            map_user_code_span((uint32_t)syscall_marker,
+                               (uint32_t)vm_user_entry);
+            if (paging_map_page_in_directory(proc_cr3, USER_STACK_BOTTOM,
+                                             stack_phys,
+                                             PAGE_PRESENT | PAGE_WRITABLE |
+                                                 PAGE_USER)) {
+                memset((void *)USER_STACK_BOTTOM, 0, USER_STACK_SIZE);
+                paging_unmap_page(USER_STACK_GUARD_BOTTOM);
+                ready = paging_is_user_accessible(USER_STACK_BOTTOM) &&
+                        !paging_is_mapped(USER_STACK_GUARD_BOTTOM);
+            }
+            paging_switch_directory(kernel_cr3);
+        }
+
+        if (ready) {
+            scheduler_set_current(user_proc);
+            serial_puts("VM_USER_READY\n");
+            enter_user_mode((uint32_t)vm_user_entry, USER_STACK_TOP);
+        }
+
+        serial_puts("VM_FAIL\n");
+        while (1) {
+            asm volatile("cli; hlt");
+        }
+    }
+#endif
+
 #ifdef ENABLE_REDTEAM_SELFTEST
     {
         serial_puts("RED_TEAM_TEST\n");
+        if (redteam_vm_cow_alias_blocked_probe()) {
+            serial_puts("RED_VM_COW_ALIAS_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+        if (redteam_vm_refcount_underflow_blocked_probe()) {
+            serial_puts("RED_VM_REFCOUNT_UNDERFLOW_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+        if (redteam_vm_guard_bypass_blocked_probe()) {
+            serial_puts("RED_VM_GUARD_BYPASS_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+        if (redteam_vm_fault_rollback_blocked_probe()) {
+            serial_puts("RED_VM_FAULT_ROLLBACK_BLOCKED\n");
+        } else {
+            serial_puts("RED_TEAM_FAIL\n");
+            while (1) {
+                asm volatile("cli; hlt");
+            }
+        }
+
 
         vfs_format();
         vfs_mount();

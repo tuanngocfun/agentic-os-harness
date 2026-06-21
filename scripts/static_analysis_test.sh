@@ -64,6 +64,7 @@ selftest_defines=(
   ENABLE_TIMER_SELFTEST
   ENABLE_USERMODE_SELFTEST
   ENABLE_VFS_SELFTEST
+  ENABLE_VM_SELFTEST
 )
 
 all_define_flags=()
