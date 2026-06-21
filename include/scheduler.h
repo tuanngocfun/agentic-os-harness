@@ -3,6 +3,9 @@
 
 #include "process.h"
 
+/* Implemented by the low-level context switch in kernel/usermode.asm. */
+void context_switch(uint32_t *save_esp, uint32_t *load_esp);
+
 void scheduler_init(void);
 void scheduler_add(struct process *proc);
 void scheduler_schedule(void);

@@ -14,6 +14,10 @@
 static uint8_t *ramdisk_data = (uint8_t *)RAMDISK_BASE;
 static struct block_device ramdisk_dev;
 static int ramdisk_initialized = 0;
+static const char ramdisk_name[] = "ramdisk0";
+
+_Static_assert(sizeof(ramdisk_name) <= BLKDEV_MAX_NAME,
+               "ramdisk name must fit block-device metadata");
 
 static int ramdisk_range_valid(uint32_t lba, uint32_t count) {
     if (count == 0 || lba >= RAMDISK_SECTORS) {
@@ -111,10 +115,7 @@ int ramdisk_init(void) {
 
     memset(&ramdisk_dev, 0, sizeof(ramdisk_dev));
 
-    const char *name = "ramdisk0";
-    for (int i = 0; i < BLKDEV_MAX_NAME - 1 && name[i]; i++) {
-        ramdisk_dev.name[i] = name[i];
-    }
+    memcpy(ramdisk_dev.name, ramdisk_name, sizeof(ramdisk_name));
 
     ramdisk_dev.type = BLKDEV_TYPE_RAMDISK;
     ramdisk_dev.sector_count = RAMDISK_SECTORS;

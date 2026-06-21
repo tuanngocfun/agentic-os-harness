@@ -14,6 +14,37 @@ static uint32_t process_count = 0;
 static uint32_t stack_pool[STACK_SLOTS * STACK_SLOT_SIZE];
 static uint16_t stack_free_bitmap = 0xFFFF;  // All 16 slots free initially
 
+int process_allow_test_marker(struct process *proc, uint32_t marker) {
+    if (!proc || marker == 0 || marker > 64) {
+        return 0;
+    }
+
+    proc->test_marker_permissions |= (1ULL << (marker - 1));
+    return 1;
+}
+
+int process_consume_test_marker(struct process *proc, uint32_t marker) {
+    uint64_t permission;
+
+    if (!proc || marker == 0 || marker > 64) {
+        return 0;
+    }
+
+    permission = 1ULL << (marker - 1);
+    if ((proc->test_marker_permissions & permission) == 0) {
+        return 0;
+    }
+
+    proc->test_marker_permissions &= ~permission;
+    return 1;
+}
+
+void process_clear_test_markers(struct process *proc) {
+    if (proc) {
+        proc->test_marker_permissions = 0;
+    }
+}
+
 void process_fd_table_init(struct process *proc) {
     if (!proc) {
         return;
@@ -174,6 +205,7 @@ struct process *process_create(uint32_t entry_point, int is_user) {
     proc->priority = PROCESS_DEFAULT_PRIORITY;
     proc->dynamic_priority = PROCESS_DEFAULT_PRIORITY;
     proc->run_count = 0;
+    proc->test_marker_permissions = 0;
 
     // Initialize lifecycle fields
     proc->parent_pid = 0;       // No parent initially
@@ -253,6 +285,7 @@ struct process *process_create_preemptive(uint32_t entry_point) {
     proc->priority = PROCESS_DEFAULT_PRIORITY;
     proc->dynamic_priority = PROCESS_DEFAULT_PRIORITY;
     proc->run_count = 0;
+    proc->test_marker_permissions = 0;
 
     proc->parent_pid = 0;
     proc->exit_code = 0;
@@ -352,6 +385,7 @@ struct process *process_fork(struct process *parent,
     child->priority = parent->priority;
     child->dynamic_priority = parent->priority;
     child->run_count = 0;
+    child->test_marker_permissions = parent->test_marker_permissions;
     child->state = PROCESS_READY;
     child->user_stack = (uint32_t *)child_frame->user_esp;
     child->parent_pid = parent->pid;
@@ -394,6 +428,7 @@ void process_destroy(struct process *proc) {
     proc->priority = 0;
     proc->dynamic_priority = 0;
     proc->run_count = 0;
+    proc->test_marker_permissions = 0;
     proc->parent_pid = 0;
     proc->exit_code = 0;
     proc->exited = 0;

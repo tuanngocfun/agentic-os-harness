@@ -9,6 +9,7 @@
 #include "scheduler.h"
 #include "elf.h"
 #include "frame.h"
+#include "allocator.h"
 #include "interrupt_frame.h"
 #include "string.h"
 #include <stdint.h>
@@ -121,6 +122,286 @@ static int syscall_copy_user_string(char *dest, uint32_t user_ptr, uint32_t max_
 
     dest[max_len - 1] = '\0';
     return VFS_EINVAL;
+}
+
+struct exec_vectors {
+    uint32_t argc;
+    uint32_t envc;
+    uint32_t bytes_used;
+    uint16_t argv_offsets[EXEC_MAX_ARGS];
+    uint16_t env_offsets[EXEC_MAX_ENVS];
+    char data[EXEC_MAX_VECTOR_BYTES];
+};
+
+static uint32_t exec_copy_vector(struct exec_vectors *vectors,
+                                 uint32_t user_vector,
+                                 int environment) {
+    uint16_t *offsets = environment ? vectors->env_offsets : vectors->argv_offsets;
+    uint32_t limit = environment ? EXEC_MAX_ENVS : EXEC_MAX_ARGS;
+    uint32_t *count = environment ? &vectors->envc : &vectors->argc;
+
+    *count = 0;
+    if (user_vector == 0) {
+        return SYSCALL_SUCCESS;
+    }
+
+    for (uint32_t index = 0; index <= limit; index++) {
+        uint32_t slot = user_vector + index * sizeof(uint32_t);
+        uint32_t string_ptr;
+        int terminated = 0;
+
+        if (!is_user_pointer_valid(slot, sizeof(uint32_t))) {
+            return SYSCALL_EFAULT;
+        }
+        string_ptr = *((const uint32_t *)slot);
+        if (string_ptr == 0) {
+            *count = index;
+            return SYSCALL_SUCCESS;
+        }
+        if (index == limit) {
+            return SYSCALL_E2BIG;
+        }
+
+        offsets[index] = (uint16_t)vectors->bytes_used;
+        for (uint32_t length = 0; length < EXEC_MAX_STRING_BYTES; length++) {
+            char value;
+
+            if (!is_user_pointer_valid(string_ptr + length, 1)) {
+                return SYSCALL_EFAULT;
+            }
+            if (vectors->bytes_used >= EXEC_MAX_VECTOR_BYTES) {
+                return SYSCALL_E2BIG;
+            }
+
+            value = *((const char *)(string_ptr + length));
+            vectors->data[vectors->bytes_used++] = value;
+            if (value == '\0') {
+                terminated = 1;
+                break;
+            }
+        }
+        if (!terminated) {
+            return SYSCALL_E2BIG;
+        }
+    }
+
+    return SYSCALL_E2BIG;
+}
+
+static int exec_build_user_stack(uint32_t new_cr3,
+                                 const struct exec_vectors *vectors,
+                                 uint32_t stack_page,
+                                 uint32_t *stack_pointer) {
+    uint32_t old_cr3 = paging_get_current_directory();
+    uint32_t argv_user[EXEC_MAX_ARGS];
+    uint32_t env_user[EXEC_MAX_ENVS];
+    uint32_t sp = USER_STACK_TOP;
+    uint32_t table_words;
+    uint32_t table_bytes;
+    uint32_t table_sp;
+    uint32_t *table;
+
+    paging_switch_directory(new_cr3);
+    if (!paging_is_user_writable(stack_page)) {
+        paging_switch_directory(old_cr3);
+        return 0;
+    }
+    memset((void *)stack_page, 0, USER_STACK_SIZE);
+
+    for (uint32_t i = vectors->envc; i > 0; i--) {
+        uint32_t index = i - 1;
+        const char *value = &vectors->data[vectors->env_offsets[index]];
+        uint32_t length = (uint32_t)strlen(value) + 1;
+
+        if (length > sp - stack_page) {
+            paging_switch_directory(old_cr3);
+            return 0;
+        }
+        sp -= length;
+        memcpy((void *)sp, value, length);
+        env_user[index] = sp;
+    }
+
+    for (uint32_t i = vectors->argc; i > 0; i--) {
+        uint32_t index = i - 1;
+        const char *value = &vectors->data[vectors->argv_offsets[index]];
+        uint32_t length = (uint32_t)strlen(value) + 1;
+
+        if (length > sp - stack_page) {
+            paging_switch_directory(old_cr3);
+            return 0;
+        }
+        sp -= length;
+        memcpy((void *)sp, value, length);
+        argv_user[index] = sp;
+    }
+
+    table_words = 1 + vectors->argc + 1 + vectors->envc + 1;
+    table_bytes = table_words * sizeof(uint32_t);
+    if (table_bytes > sp - stack_page) {
+        paging_switch_directory(old_cr3);
+        return 0;
+    }
+    table_sp = (sp - table_bytes) & ~0x0Fu;
+    if (table_sp < stack_page) {
+        paging_switch_directory(old_cr3);
+        return 0;
+    }
+
+    table = (uint32_t *)table_sp;
+    *table++ = vectors->argc;
+    for (uint32_t i = 0; i < vectors->argc; i++) {
+        *table++ = argv_user[i];
+    }
+    *table++ = 0;
+    for (uint32_t i = 0; i < vectors->envc; i++) {
+        *table++ = env_user[i];
+    }
+    *table = 0;
+
+    *stack_pointer = table_sp;
+    paging_switch_directory(old_cr3);
+    return 1;
+}
+
+static uint32_t syscall_exec(uint32_t path_ptr,
+                             uint32_t argv_ptr,
+                             uint32_t envp_ptr,
+                             uint32_t caller_cs,
+                             uint32_t frame_ptr,
+                             struct syscall_dispatch_control *control) {
+    char kernel_path[VFS_MAX_PATH];
+    struct exec_vectors *vectors;
+    struct process *current;
+    struct elf_load_info info;
+    uint32_t new_cr3;
+    uint32_t stack_page = USER_STACK_TOP - USER_STACK_SIZE;
+    uint32_t stack_phys;
+    uint32_t mapped_stack_phys;
+    uint32_t old_cr3;
+    uint32_t old_process_cr3;
+    uint32_t new_stack_pointer;
+    uint32_t status;
+    int elf_status;
+
+    if (!is_ring3(caller_cs)) {
+        return SYSCALL_EPERM;
+    }
+    if (!frame_ptr) {
+        return SYSCALL_EINVAL;
+    }
+
+    current = process_get_current();
+    if (!current) {
+        return SYSCALL_EINVAL;
+    }
+    if (!is_user_pointer_valid(path_ptr, 1) ||
+        syscall_copy_user_string(kernel_path, path_ptr, sizeof(kernel_path)) != VFS_SUCCESS) {
+        return SYSCALL_EFAULT;
+    }
+
+    vectors = (struct exec_vectors *)kmalloc(sizeof(*vectors));
+    if (!vectors) {
+        return SYSCALL_ENOMEM;
+    }
+    memset(vectors, 0, sizeof(*vectors));
+
+    status = exec_copy_vector(vectors, argv_ptr, 0);
+    if (status != SYSCALL_SUCCESS) {
+        kfree(vectors);
+        return status;
+    }
+    status = exec_copy_vector(vectors, envp_ptr, 1);
+    if (status != SYSCALL_SUCCESS) {
+        kfree(vectors);
+        return status;
+    }
+
+    new_cr3 = paging_create_address_space();
+    if (!new_cr3) {
+        kfree(vectors);
+        return SYSCALL_ENOMEM;
+    }
+
+    elf_status = elf_load_from_vfs_into(new_cr3, kernel_path, &info);
+    if (elf_status != ELF_SUCCESS) {
+        paging_destroy_address_space(new_cr3);
+        kfree(vectors);
+        if (elf_status == ELF_ENOENT) return SYSCALL_ENOENT;
+        if (elf_status == ELF_EINVAL) return SYSCALL_EINVAL;
+        if (elf_status == ELF_ENOSPC) return SYSCALL_ENOSPC;
+        return SYSCALL_EIO;
+    }
+
+    stack_phys = frame_alloc();
+    if (!stack_phys) {
+        paging_destroy_address_space(new_cr3);
+        kfree(vectors);
+        return SYSCALL_ENOMEM;
+    }
+    paging_map_page_in_directory(new_cr3,
+                                 stack_page,
+                                 stack_phys,
+                                 PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+
+    old_cr3 = paging_get_current_directory();
+    paging_switch_directory(new_cr3);
+    mapped_stack_phys = paging_get_physical_address(stack_page) & 0xFFFFF000;
+    paging_switch_directory(old_cr3);
+    if (mapped_stack_phys != stack_phys) {
+        frame_free(stack_phys);
+        paging_destroy_address_space(new_cr3);
+        kfree(vectors);
+        return SYSCALL_EIO;
+    }
+
+    if (!exec_build_user_stack(new_cr3, vectors, stack_page, &new_stack_pointer)) {
+        paging_destroy_address_space(new_cr3);
+        kfree(vectors);
+        return SYSCALL_E2BIG;
+    }
+
+    serial_puts("PROCESS_EXEC_LOAD_OK\n");
+    serial_puts("EXEC loaded entry=");
+    serial_put_uint32(info.entry);
+    serial_puts("\n");
+
+    old_process_cr3 = current->cr3;
+    process_fd_close_on_exec(current);
+    current->cr3 = new_cr3;
+    current->heap_start = PROCESS_HEAP_START;
+    current->heap_end = PROCESS_HEAP_START;
+    current->eip = info.entry;
+    current->user_stack = (uint32_t *)new_stack_pointer;
+    current->interrupt_frame = 1;
+    kfree(vectors);
+
+    paging_switch_directory(new_cr3);
+    paging_destroy_address_space(old_process_cr3);
+
+    if (control && control->frame) {
+        struct interrupt_frame *frame = control->frame;
+        frame->edi = 0;
+        frame->esi = 0;
+        frame->ebp = 0;
+        frame->ebx = 0;
+        frame->edx = 0;
+        frame->ecx = 0;
+        frame->gs = 0x23;
+        frame->fs = 0x23;
+        frame->es = 0x23;
+        frame->ds = 0x23;
+        frame->eip = info.entry;
+        frame->cs = 0x1B;
+        frame->eflags = 0x202;
+        frame->user_esp = new_stack_pointer;
+        frame->user_ss = 0x23;
+    } else {
+        *((uint32_t *)frame_ptr) = info.entry;
+        ((uint32_t *)frame_ptr)[3] = new_stack_pointer;
+    }
+
+    return SYSCALL_SUCCESS;
 }
 
 static uint32_t syscall_open(uint32_t path_ptr, uint32_t flags, uint32_t caller_cs) {
@@ -331,6 +612,7 @@ static uint32_t syscall_handle(uint32_t syscall_num,
             }
             return arg1;
 
+#if defined(ENABLE_SYSCALL_ABI_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
         case SYS_TEST_ABI:
             if (is_ring3(caller_cs)) {
                 return SYSCALL_EPERM;
@@ -344,6 +626,9 @@ static uint32_t syscall_handle(uint32_t syscall_num,
             serial_puts("\n");
             return 0xDEADBEEF;
 
+#endif
+
+#ifdef ENABLE_USERMODE_SELFTEST
         case SYS_USERMODE_TEST:
             if (is_ring3(caller_cs) && arg1 == 0xCAFEBABE) {
                 serial_puts("USERMODE_RING3_OK\n");
@@ -352,11 +637,13 @@ static uint32_t syscall_handle(uint32_t syscall_num,
             serial_puts("USERMODE_RING3_FAIL\n");
             return SYSCALL_EPERM;
 
-        case SYS_TEST_MARKER:
-            if (!is_ring3(caller_cs)) {
-                return SYSCALL_EPERM;
-            }
-            if (arg2 != SYSCALL_TEST_MARKER_TOKEN) {
+#endif
+
+#if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST)
+        case SYS_TEST_MARKER: {
+            struct process *current = process_get_current();
+            if (!is_ring3(caller_cs) ||
+                !process_consume_test_marker(current, arg1)) {
                 return SYSCALL_EPERM;
             }
             switch (arg1) {
@@ -464,9 +751,29 @@ static uint32_t syscall_handle(uint32_t syscall_num,
                     serial_puts("LIFECYCLE_FAIL\n");
                     break;
 #endif
+#ifdef ENABLE_EXEC_ARGS_SELFTEST
+                case SYSCALL_MARK_EXEC_ARGS_NEGATIVE:
+                    serial_puts("EXEC_ARGS_NEGATIVE_OK\n");
+                    break;
+                case SYSCALL_MARK_EXEC_ARGS_LAYOUT:
+                    serial_puts("EXEC_ARGS_LAYOUT_OK\n");
+                    break;
+                case SYSCALL_MARK_EXEC_ARGS_CONTENT:
+                    serial_puts("EXEC_ARGS_CONTENT_OK\n");
+                    break;
+                case SYSCALL_MARK_EXEC_ARGS_DONE:
+                    serial_puts("EXEC_ARGS_OK\n");
+                    break;
+                case SYSCALL_MARK_EXEC_ARGS_FAIL:
+                    serial_puts("EXEC_ARGS_FAIL\n");
+                    break;
+#endif
 #ifdef ENABLE_REDTEAM_SELFTEST
                 case SYSCALL_MARK_RED_MARKER_BLOCKED:
                     serial_puts("RED_MARKER_FORGERY_BLOCKED\n");
+                    break;
+                case SYSCALL_MARK_RED_MARKER_REPLAY_BLOCKED:
+                    serial_puts("RED_MARKER_REPLAY_BLOCKED\n");
                     break;
                 case SYSCALL_MARK_RED_EXEC_BLOCKED:
                     serial_puts("RED_EXEC_RESIDUAL_MAPPING_BLOCKED\n");
@@ -497,6 +804,8 @@ static uint32_t syscall_handle(uint32_t syscall_num,
                     return SYSCALL_EINVAL;
             }
             return SYSCALL_SUCCESS;
+        }
+#endif
 
         case SYS_OPEN:
             return syscall_open(arg1, arg2, caller_cs);
@@ -613,108 +922,8 @@ static uint32_t syscall_handle(uint32_t syscall_num,
             return child->pid;
         }
 
-        case SYS_EXEC: {
-            if (!is_ring3(caller_cs)) {
-                return SYSCALL_EPERM;
-            }
-
-            if (!frame_ptr) {
-                return SYSCALL_EINVAL;
-            }
-
-            struct process *current = process_get_current();
-            if (!current) {
-                return SYSCALL_EINVAL;
-            }
-
-            if (!is_user_pointer_valid(arg1, 1)) {
-                return SYSCALL_EFAULT;
-            }
-
-            char kernel_path[VFS_MAX_PATH];
-            if (syscall_copy_user_string(kernel_path, arg1, sizeof(kernel_path)) != VFS_SUCCESS) {
-                return SYSCALL_EFAULT;
-            }
-
-            uint32_t new_cr3 = paging_create_address_space();
-            if (!new_cr3) {
-                return SYSCALL_ENOMEM;
-            }
-
-            struct elf_load_info info;
-            int ret = elf_load_from_vfs_into(new_cr3, kernel_path, &info);
-            if (ret != ELF_SUCCESS) {
-                paging_destroy_address_space(new_cr3);
-                if (ret == ELF_ENOENT) return SYSCALL_ENOENT;
-                if (ret == ELF_EINVAL) return SYSCALL_EINVAL;
-                if (ret == ELF_ENOSPC) return SYSCALL_ENOSPC;
-                return SYSCALL_EIO;
-            }
-
-            uint32_t stack_page = USER_STACK_TOP - 0x1000;
-            uint32_t stack_phys = frame_alloc();
-            if (!stack_phys) {
-                paging_destroy_address_space(new_cr3);
-                return SYSCALL_ENOMEM;
-            }
-            paging_map_page_in_directory(new_cr3,
-                                         stack_page,
-                                         stack_phys,
-                                         PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
-
-            uint32_t old_cr3 = paging_get_current_directory();
-            uint32_t old_process_cr3 = current->cr3;
-            paging_switch_directory(new_cr3);
-            if (!paging_is_user_writable(stack_page)) {
-                uint32_t mapped_stack_phys = paging_get_physical_address(stack_page) & 0xFFFFF000;
-                paging_switch_directory(old_cr3);
-                if (mapped_stack_phys != stack_phys) {
-                    frame_free(stack_phys);
-                }
-                paging_destroy_address_space(new_cr3);
-                return SYSCALL_EIO;
-            }
-            memset((void *)stack_page, 0, 0x1000);
-            paging_switch_directory(old_cr3);
-
-            serial_puts("PROCESS_EXEC_LOAD_OK\n");
-            serial_puts("EXEC loaded entry=");
-            serial_put_uint32(info.entry);
-            serial_puts("\n");
-
-            process_fd_close_on_exec(current);
-            current->cr3 = new_cr3;
-            current->heap_start = PROCESS_HEAP_START;
-            current->heap_end = PROCESS_HEAP_START;
-            current->eip = info.entry;
-            current->user_stack = (uint32_t *)USER_STACK_TOP;
-            current->interrupt_frame = 1;
-            paging_switch_directory(new_cr3);
-            paging_destroy_address_space(old_process_cr3);
-
-            if (control && control->frame) {
-                struct interrupt_frame *frame = control->frame;
-                frame->edi = 0;
-                frame->esi = 0;
-                frame->ebp = 0;
-                frame->ebx = 0;
-                frame->edx = 0;
-                frame->ecx = 0;
-                frame->gs = 0x23;
-                frame->fs = 0x23;
-                frame->es = 0x23;
-                frame->ds = 0x23;
-                frame->eip = info.entry;
-                frame->cs = 0x1B;
-                frame->eflags = 0x202;
-                frame->user_esp = USER_STACK_TOP;
-                frame->user_ss = 0x23;
-            } else {
-                *((uint32_t *)frame_ptr) = info.entry;
-                ((uint32_t *)frame_ptr)[3] = USER_STACK_TOP;
-            }
-            return SYSCALL_SUCCESS;
-        }
+        case SYS_EXEC:
+            return syscall_exec(arg1, arg2, arg3, caller_cs, frame_ptr, control);
 
         case SYS_BRK: {
             if (!is_ring3(caller_cs)) {

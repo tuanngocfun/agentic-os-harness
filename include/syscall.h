@@ -58,10 +58,16 @@ struct syscall_file_stat {
 #define SYSCALL_ECHILD      ((uint32_t)-11) // No child process
 #define SYSCALL_ENOMEM      ((uint32_t)-12) // Out of memory
 #define SYSCALL_EAGAIN      ((uint32_t)-13) // Resource temporarily unavailable
+#define SYSCALL_E2BIG       ((uint32_t)-14) // Argument or environment vector too large
 
 // User-space address range (0x40000000 - 0xBFFFFFFF)
 #define USER_SPACE_START    0x40000000
 #define USER_SPACE_END      0xC0000000
+
+#define EXEC_MAX_ARGS          16u
+#define EXEC_MAX_ENVS          16u
+#define EXEC_MAX_STRING_BYTES  256u
+#define EXEC_MAX_VECTOR_BYTES  3072u
 
 #define SYSCALL_MARK_INVALID_NUM       1
 #define SYSCALL_MARK_ZERO_NUM          2
@@ -105,7 +111,11 @@ struct syscall_file_stat {
 #define SYSCALL_MARK_LIFECYCLE_EXEC_REPLACED 40
 #define SYSCALL_MARK_LIFECYCLE_DONE 41
 #define SYSCALL_MARK_LIFECYCLE_FAIL 42
-
-#define SYSCALL_TEST_MARKER_TOKEN 0x51A7C0DEu
+#define SYSCALL_MARK_RED_MARKER_REPLAY_BLOCKED 43
+#define SYSCALL_MARK_EXEC_ARGS_NEGATIVE 44
+#define SYSCALL_MARK_EXEC_ARGS_LAYOUT 45
+#define SYSCALL_MARK_EXEC_ARGS_CONTENT 46
+#define SYSCALL_MARK_EXEC_ARGS_DONE 47
+#define SYSCALL_MARK_EXEC_ARGS_FAIL 48
 
 #endif

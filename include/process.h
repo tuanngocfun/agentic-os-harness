@@ -38,6 +38,7 @@ struct process {
     uint32_t priority;
     uint32_t dynamic_priority;
     uint32_t run_count;
+    uint64_t test_marker_permissions;
     enum process_state state;
     uint32_t *kernel_stack;
     uint32_t *user_stack;
@@ -77,6 +78,10 @@ void process_mark_exit(struct process *proc, uint32_t exit_code);
 void process_complete_context_switch(void);
 uint32_t process_get_count(void);
 void process_set_address_space(struct process *proc, uint32_t cr3);
+/* Kernel-owned, one-shot permissions for selftest marker emission. */
+int process_allow_test_marker(struct process *proc, uint32_t marker);
+int process_consume_test_marker(struct process *proc, uint32_t marker);
+void process_clear_test_markers(struct process *proc);
 void process_fd_table_init(struct process *proc);
 int process_fd_install(struct process *proc, int handle, uint32_t flags);
 int process_fd_resolve(const struct process *proc, int fd);

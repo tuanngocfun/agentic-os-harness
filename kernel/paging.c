@@ -138,14 +138,6 @@ int paging_is_mapped(uint32_t virtual_addr) {
     return (page_table[table_index] & PAGE_PRESENT) != 0;
 }
 
-uint32_t paging_get_page_table_addr(uint32_t virtual_addr) {
-    uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
-    if (!(active_page_directory[dir_index] & PAGE_PRESENT)) {
-        return 0;
-    }
-    return active_page_directory[dir_index] & 0xFFFFF000;
-}
-
 int paging_is_user_accessible(uint32_t virtual_addr) {
     uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
     uint32_t table_index = (virtual_addr >> 12) & 0x3FF;

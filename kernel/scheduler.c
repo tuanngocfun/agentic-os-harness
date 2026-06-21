@@ -6,8 +6,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-extern void context_switch(uint32_t *save_esp, uint32_t *load_esp);
-
 static struct process *ready_queue = NULL;
 static struct process *current = NULL;
 static uint32_t schedule_count = 0;

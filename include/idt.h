@@ -5,6 +5,8 @@
 
 void idt_init(void);
 void idt_set_gate(uint8_t num, uint32_t base, uint16_t sel, uint8_t flags);
+void isr_handler(uint32_t interrupt);
+void exception_handler(uint32_t vector, uint32_t error_code);
 
 #ifdef ENABLE_PAGING_SELFTEST
 extern volatile int page_fault_expected;
