@@ -8,9 +8,13 @@
 #define RESERVED_LOW_END 0x00300000u
 
 static uint8_t frame_bitmap[MAX_FRAMES / 8];
+static uint16_t frame_refcounts[MAX_FRAMES];
 static uint32_t total_frames = 0;
 static uint32_t used_frames = 0;
 static int frame_initialized = 0;
+#if defined(ENABLE_VM_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
+static int32_t frame_fail_after = -1;
+#endif
 
 extern uint8_t __kernel_end;
 
@@ -44,6 +48,9 @@ static void mark_allocated(uint32_t start_addr, uint32_t end_addr) {
             bitmap_set(frame);
             used_frames++;
         }
+        if (frame_refcounts[frame] == 0) {
+            frame_refcounts[frame] = 1;
+        }
     }
 }
 
@@ -58,6 +65,7 @@ static void mark_free(uint32_t start_addr, uint32_t end_addr) {
             if (used_frames > 0) {
                 used_frames--;
             }
+            frame_refcounts[frame] = 0;
         }
     }
 }
@@ -100,7 +108,14 @@ void frame_init(void) {
     for (uint32_t i = 0; i < sizeof(frame_bitmap); i++) {
         frame_bitmap[i] = 0xFF;
     }
+    for (uint32_t i = 0; i < MAX_FRAMES; i++) {
+        frame_refcounts[i] = i < total_frames ? 1 : 0;
+    }
     used_frames = total_frames;
+
+#if defined(ENABLE_VM_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
+    frame_fail_after = -1;
+#endif
 
     if (e820_is_available()) {
         struct e820_map *map = e820_get_map();
@@ -135,6 +150,15 @@ uint32_t frame_alloc_below(uint32_t limit) {
         return 0;
     }
 
+#if defined(ENABLE_VM_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
+    if (frame_fail_after == 0) {
+        return 0;
+    }
+    if (frame_fail_after > 0) {
+        frame_fail_after--;
+    }
+#endif
+
     uint32_t max_frame = limit / FRAME_SIZE;
     if (max_frame > total_frames) {
         max_frame = total_frames;
@@ -145,6 +169,7 @@ uint32_t frame_alloc_below(uint32_t limit) {
         if (!bitmap_test(frame)) {
             bitmap_set(frame);
             used_frames++;
+            frame_refcounts[frame] = 1;
             return frame * FRAME_SIZE;
         }
     }
@@ -156,22 +181,51 @@ uint32_t frame_alloc(void) {
     return frame_alloc_below(total_frames * FRAME_SIZE);
 }
 
-void frame_free(uint32_t phys_addr) {
-    if (!frame_initialized || (phys_addr & (FRAME_SIZE - 1)) != 0) {
-        return;
-    }
-
+int frame_retain(uint32_t phys_addr) {
     uint32_t frame = phys_addr / FRAME_SIZE;
-    if (frame >= total_frames || phys_addr < RESERVED_LOW_END) {
-        return;
+
+    if (!frame_initialized || (phys_addr & (FRAME_SIZE - 1)) != 0) {
+        return 0;
+    }
+    if (frame >= total_frames || !bitmap_test(frame) ||
+        frame_refcounts[frame] == 0 || frame_refcounts[frame] == 0xFFFFu) {
+        return 0;
     }
 
-    if (bitmap_test(frame)) {
+    frame_refcounts[frame]++;
+    return 1;
+}
+
+int frame_release(uint32_t phys_addr) {
+    uint32_t frame = phys_addr / FRAME_SIZE;
+
+    if (!frame_initialized || (phys_addr & (FRAME_SIZE - 1)) != 0) {
+        return 0;
+    }
+    if (frame >= total_frames || !bitmap_test(frame) ||
+        frame_refcounts[frame] == 0) {
+        return 0;
+    }
+    if (phys_addr < RESERVED_LOW_END) {
+        if (frame_refcounts[frame] <= 1) {
+            return 0;
+        }
+        frame_refcounts[frame]--;
+        return 1;
+    }
+
+    frame_refcounts[frame]--;
+    if (frame_refcounts[frame] == 0) {
         bitmap_clear(frame);
         if (used_frames > 0) {
             used_frames--;
         }
     }
+    return 1;
+}
+
+void frame_free(uint32_t phys_addr) {
+    (void)frame_release(phys_addr);
 }
 
 int frame_reserve_range(uint32_t start_addr, uint32_t end_addr) {
@@ -199,6 +253,16 @@ int frame_is_allocated(uint32_t phys_addr) {
     return bitmap_test(frame);
 }
 
+uint32_t frame_get_refcount(uint32_t phys_addr) {
+    uint32_t frame = phys_addr / FRAME_SIZE;
+
+    if (!frame_initialized || (phys_addr & (FRAME_SIZE - 1)) != 0 ||
+        frame >= total_frames || !bitmap_test(frame)) {
+        return 0;
+    }
+    return frame_refcounts[frame];
+}
+
 uint32_t frame_get_total_count(void) {
     return total_frames;
 }
@@ -213,3 +277,9 @@ uint32_t frame_get_free_count(void) {
 uint32_t frame_get_used_count(void) {
     return used_frames;
 }
+
+#if defined(ENABLE_VM_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST)
+void frame_test_fail_after(int32_t successful_allocations) {
+    frame_fail_after = successful_allocations;
+}
+#endif
