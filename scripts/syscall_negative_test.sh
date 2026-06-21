@@ -14,7 +14,8 @@ EVIDENCE_LOG="$BUILD_DIR/evidence.jsonl"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
 TASK_NAME="${TASK_NAME:-syscall-negative-test}"
 QEMU="${QEMU:-qemu-system-i386}"
-QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-}"
+source "$(dirname "$0")/qemu_runtime.sh"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -35,7 +36,11 @@ echo "=== Testing Syscall Negative Paths ==="
 : > "$SERIAL_LOG"
 : > "$QEMU_LOG"
 
-timeout --preserve-status "$TIMEOUT_SECONDS" "$QEMU" \
+qemu_runtime_preflight
+qemu_runtime_begin
+
+set +e
+timeout "$TIMEOUT_SECONDS" "$QEMU" \
   -L "$QEMU_BIOS_DIR" \
   -drive file="$OS_IMG",format=raw \
   -m 512M \
@@ -44,7 +49,11 @@ timeout --preserve-status "$TIMEOUT_SECONDS" "$QEMU" \
   -nic none \
   -display none \
   -no-reboot \
-  > "$QEMU_LOG" 2>&1 || true
+  > "$QEMU_LOG" 2>&1
+qemu_status=$?
+set -e
+
+qemu_runtime_verify "$qemu_status" timeout
 
 marker_present "BOOT_OK" || fail "missing BOOT_OK"
 marker_present "KERNEL_INIT_OK" || fail "missing KERNEL_INIT_OK"

@@ -13,7 +13,8 @@ LOCK_DIR="$BUILD_DIR/.boot_test.lock"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-5}"
 TASK_NAME="${TASK_NAME:-boot-test}"
 QEMU="${QEMU:-qemu-system-i386}"
-QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-}"
+source scripts/qemu_runtime.sh
 ALLOW_QEMU_EXIT="${ALLOW_QEMU_EXIT:-0}"
 
 fail() {
@@ -106,6 +107,9 @@ trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+qemu_runtime_preflight
+qemu_runtime_begin
+
 set +e
 timeout "$TIMEOUT_SECONDS" "$QEMU" \
   -L "$QEMU_BIOS_DIR" \
@@ -119,6 +123,8 @@ timeout "$TIMEOUT_SECONDS" "$QEMU" \
   > "$QEMU_LOG" 2>&1
 qemu_status=$?
 set -e
+
+qemu_runtime_verify "$qemu_status" timeout
 
 tr -d '\r' < "$SERIAL_LOG" > "$SERIAL_CLEAN"
 

@@ -10,7 +10,8 @@ SERIAL_CLEAN="$BUILD_DIR/serial.scheduler_safety.clean.log"
 QEMU_LOG="$BUILD_DIR/qemu.scheduler_safety.log"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
 QEMU="${QEMU:-qemu-system-i386}"
-QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-}"
+source "$(dirname "$0")/qemu_runtime.sh"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -36,6 +37,9 @@ mkdir -p "$BUILD_DIR"
 : > "$SERIAL_CLEAN"
 : > "$QEMU_LOG"
 
+qemu_runtime_preflight
+qemu_runtime_begin
+
 set +e
 timeout "$TIMEOUT_SECONDS" "$QEMU" \
   -L "$QEMU_BIOS_DIR" \
@@ -47,7 +51,10 @@ timeout "$TIMEOUT_SECONDS" "$QEMU" \
   -display none \
   -no-reboot \
   > "$QEMU_LOG" 2>&1
+qemu_status=$?
 set -e
+
+qemu_runtime_verify "$qemu_status" timeout
 
 clean_serial
 

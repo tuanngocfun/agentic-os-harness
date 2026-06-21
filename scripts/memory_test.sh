@@ -12,7 +12,8 @@ EVIDENCE_LOG="$BUILD_DIR/evidence.jsonl"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
 TASK_NAME="${TASK_NAME:-memory-detection-test}"
 QEMU="${QEMU:-qemu-system-i386}"
-QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-}"
+source "$(dirname "$0")/qemu_runtime.sh"
 EXPECTED_MEMORY_KB="${EXPECTED_MEMORY_KB:-524288}"
 MIN_USABLE_MEMORY_KB="${MIN_USABLE_MEMORY_KB:-520000}"
 
@@ -96,6 +97,9 @@ mkdir -p "$BUILD_DIR"
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+qemu_runtime_preflight
+qemu_runtime_begin
+
 set +e
 timeout "$TIMEOUT_SECONDS" "$QEMU" \
   -L "$QEMU_BIOS_DIR" \
@@ -109,6 +113,8 @@ timeout "$TIMEOUT_SECONDS" "$QEMU" \
   > "$QEMU_LOG" 2>&1
 qemu_status=$?
 set -e
+
+qemu_runtime_verify "$qemu_status" timeout
 
 clean_serial
 

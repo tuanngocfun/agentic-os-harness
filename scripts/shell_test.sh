@@ -15,7 +15,8 @@ EVIDENCE_LOG="$BUILD_DIR/evidence.jsonl"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-12}"
 TASK_NAME="${TASK_NAME:-shell-runtime-test}"
 QEMU="${QEMU:-qemu-system-i386}"
-QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-/home/ngocnt/opt/share/qemu}"
+QEMU_BIOS_DIR="${QEMU_BIOS_DIR:-}"
+source "$(dirname "$0")/qemu_runtime.sh"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -85,7 +86,7 @@ failure_present() {
 }
 
 qemu_alive() {
-  kill -0 "$qemu_pid" 2>/dev/null
+  [ -n "${qemu_pid:-}" ] && kill -0 "$qemu_pid" 2>/dev/null
 }
 
 monitor_cmd() {
@@ -146,6 +147,9 @@ mkdir -p "$BUILD_DIR"
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+qemu_runtime_preflight
+qemu_runtime_begin
+
 coproc QEMU_MON {
   "$QEMU" \
     -L "$QEMU_BIOS_DIR" \
@@ -168,8 +172,26 @@ cleanup() {
   if qemu_alive; then
     kill "$qemu_pid" 2>/dev/null || true
   fi
-  wait "$qemu_pid" 2>/dev/null || true
+  set +e
+  wait "$qemu_pid" 2>/dev/null
+  cleanup_status=$?
+  set -e
+  if [ "${QEMU_RUNTIME_RECORDED:-0}" = 0 ]; then
+    qemu_runtime_record "$cleanup_status" interactive || true
+  fi
 }
+finish_qemu_run() {
+  qemu_alive || fail "qemu exited before controlled shutdown"
+  printf 'quit\n' >&"${QEMU_MON[1]}" || fail "failed to request QEMU shutdown"
+  set +e
+  wait "$qemu_pid"
+  qemu_status=$?
+  set -e
+  qemu_pid=""
+  trap - EXIT
+  qemu_runtime_verify "$qemu_status" interactive
+}
+
 trap cleanup EXIT
 
 deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -193,8 +215,9 @@ dump_vga_text "$VGA_DUMP" "$VGA_TEXT"
 grep -Fq "Shell ready. Type 'help' for commands." "$VGA_TEXT" || fail "VGA shell banner missing"
 grep -Fq "Available commands:" "$VGA_TEXT" || fail "help command did not render"
 
+finish_qemu_run
 ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-write_evidence "$run_id" "$started_at" "$ended_at" "0" "pass"
+write_evidence "$run_id" "$started_at" "$ended_at" "$qemu_status" "pass"
 
 echo "[PASS] BOOT_OK"
 echo "[PASS] KERNEL_INIT_OK"
