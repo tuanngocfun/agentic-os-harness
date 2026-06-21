@@ -140,3 +140,43 @@ The address-space selftest previously treated successful allocation as successfu
 - Finding log ID: `RT-HARNESS-003`
 
 The old public marker token allowed any ring-3 caller that learned it to forge evidence. The current probe presents that retired token while requesting another test's namespace, then replays an authorized marker. Per-process kernel-owned permissions must reject namespace crossing and consume every authorization exactly once; fork copies remaining permissions, exec preserves them, and process destruction clears them.
+
+## RT-VM-001: Writable Shared-Page Alias Bypass
+
+- Subsystem: paging COW aliasing
+- Severity: critical
+- Attack/defense gate: `make test-red-team`
+- Evidence marker: `RED_VM_COW_ALIAS_BLOCKED`
+- Finding log ID: `RT-VM-001`
+
+The probe clones a writable user mapping, requires both PTEs to become read-only COW, writes through the child after a COW split, and verifies the parent retains its original value on a distinct physical frame.
+
+## RT-VM-002: Frame Refcount Underflow
+
+- Subsystem: physical-frame ownership
+- Severity: high
+- Attack/defense gate: `make test-red-team`
+- Evidence marker: `RED_VM_REFCOUNT_UNDERFLOW_BLOCKED`
+- Finding log ID: `RT-VM-002`
+
+The probe releases an allocated frame to zero and immediately attempts a second release. The second operation must fail without changing allocation accounting or making another frame releasable.
+
+## RT-VM-003: User Stack Guard Bypass
+
+- Subsystem: user stack guard
+- Severity: high
+- Attack/defense gate: `make test-red-team`
+- Evidence marker: `RED_VM_GUARD_BYPASS_BLOCKED`
+- Finding log ID: `RT-VM-003`
+
+The probe presents a ring-3 non-present write fault in the permanent stack-guard range. VM policy must classify it as a guard violation and leave the page unmapped.
+
+## RT-VM-004: Fault Allocation Rollback Leak
+
+- Subsystem: page-fault rollback
+- Severity: high
+- Attack/defense gate: `make test-red-team`
+- Evidence marker: `RED_VM_FAULT_ROLLBACK_BLOCKED`
+- Finding log ID: `RT-VM-004`
+
+Deterministic allocation failure is injected into COW split and demand-zero paths. Both faults must preserve the old mapping/refcount state, create no partial mapping, and leave free-frame accounting unchanged.

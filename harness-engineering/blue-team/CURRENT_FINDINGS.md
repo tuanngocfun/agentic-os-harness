@@ -153,3 +153,47 @@ Status: blocked by current blue control; keep the historical weak-oracle witness
 - Verification gate: `make test-marker-surface`, `make test-process-lifecycle`, and `make test-red-team`
 
 Status: blocked by current blue control; keep retired-token, namespace-crossing, and replay probes active.
+
+## RT-VM-001
+
+- Impact: writable parent/child aliases can silently defeat fork isolation.
+- Attack/defense gate: `make test-red-team`
+- Expected marker: `RED_VM_COW_ALIAS_BLOCKED`
+- Machine evidence: `build/red-team/findings.jsonl`
+- Blue control: transactional clone shares user frames read-only, marks writable mappings `PAGE_COW`, retains physical ownership, and splits on the first write.
+- Verification gate: `make test-vm` plus `make test-red-team`
+
+Status: blocked by current blue control; keep the alias probe active.
+
+## RT-VM-002
+
+- Impact: refcount underflow or double release can free a live frame and corrupt unrelated address spaces.
+- Attack/defense gate: `make test-red-team`
+- Expected marker: `RED_VM_REFCOUNT_UNDERFLOW_BLOCKED`
+- Machine evidence: `build/red-team/findings.jsonl`
+- Blue control: `frame_retain` and `frame_release` validate alignment, allocation state, saturation, permanent reservations, and zero transitions.
+- Verification gate: `make test-vm` plus `make test-red-team`
+
+Status: blocked by current blue control; keep the double-release probe active.
+
+## RT-VM-003
+
+- Impact: mapping through the user stack guard permits silent stack overflow into adjacent memory.
+- Attack/defense gate: `make test-red-team`
+- Expected marker: `RED_VM_GUARD_BYPASS_BLOCKED`
+- Machine evidence: `build/red-team/findings.jsonl`
+- Blue control: the page below `USER_STACK_BOTTOM` remains permanently unmapped; a ring-3 guard fault terminates only the offending process with an internal guard exit status.
+- Verification gate: `make test-vm` plus `make test-red-team`
+
+Status: blocked by current blue control; keep the guard-bypass probe active.
+
+## RT-VM-004
+
+- Impact: allocation failure during page-fault recovery can leak frames, replace a valid COW mapping, or leave a partial demand mapping.
+- Attack/defense gate: `make test-red-team`
+- Expected marker: `RED_VM_FAULT_ROLLBACK_BLOCKED`
+- Machine evidence: `build/red-team/findings.jsonl`
+- Blue control: COW replacement commits only after allocation and copy succeed; demand mapping releases its frame if page-table installation fails.
+- Verification gate: `make test-vm` plus `make test-red-team`
+
+Status: blocked by current blue control; keep deterministic failure injection active.

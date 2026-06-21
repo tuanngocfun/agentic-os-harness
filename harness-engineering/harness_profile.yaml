@@ -1,6 +1,6 @@
-profile_version: "2026-06-20"
+profile_version: "2026-06-21"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_process_lifecycle_per_process_fds_marker_trust_exec_args_red_blue_qemu_evidence"
+project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_process_lifecycle_per_process_fds_marker_trust_exec_args_red_blue_qemu_evidence_cow_demand_guard_vm"
 source_of_truth: true
 status_last_verified: "2026-06-21"
 
@@ -8,7 +8,8 @@ scope_limits:
   broad_safety_proven: false
   production_ready: false
   unproven:
-    - "copy_on_write_fork"
+    - "swap"
+    - "automatic_stack_growth"
     - "waitpid_options"
     - "signals"
     - "smp_safe_scheduling"
@@ -63,6 +64,10 @@ security_posture:
     - "RT-SCHED-001"
     - "RT-TOOLING-001"
     - "RT-HARNESS-002"
+    - "RT-VM-001"
+    - "RT-VM-002"
+    - "RT-VM-003"
+    - "RT-VM-004"
 
 boot_profile:
   loader: "stage2_lba_loader"
@@ -101,6 +106,7 @@ claim_status:
   frame_allocator: "claimable_with_e820_frame_lifecycle_test"
   allocator: "claimable_with_allocator_runtime_test"
   paging: "claimable_with_map_fault_user_supervisor_and_address_space_tests"
+  virtual_memory: "claimable_with_cow_demand_guard_and_rollback_runtime_test"
   syscall: "claimable_with_syscall_ring3_negative_and_file_io_tests"
   exception_panic: "claimable_with_exception_test_suite"
   process: "claimable_with_ring3_fork_wait_exit_reap_transactional_exec_argv_envp_and_per_process_fd_tests"
@@ -122,6 +128,8 @@ fast_gates:
 
 deep_gates:
   - "make test-deep"
+  - "make test-vm"
+  - "cow_demand_guard_and_rollback_runtime_test"
   - "marker_surface_default_enosys_runtime_test"
   - "exec_argv_envp_transactional_runtime_test"
   - "syscall_abi_proof"
@@ -199,6 +207,7 @@ routes:
       - "kernel/process.c"
       - "kernel/scheduler.c"
       - "kernel/paging.c"
+      - "kernel/vm.c"
       - "kernel/e820.c"
       - "kernel/elf.c"
       - "kernel/frame.c"
@@ -211,6 +220,7 @@ routes:
       - "make all"
       - "make test"
       - "targeted_runtime_test_for_claimed_subsystem"
+      - "make test-vm"
       - "panic_or_fault_evidence_for_negative_paths"
   adversarial_red_team:
     allowed_paths:
@@ -223,11 +233,13 @@ routes:
       - "kernel/vfs.c"
       - "include/elf.h"
       - "include/paging.h"
+      - "include/vm.h"
       - "include/vfs.h"
       - "include/syscall.h"
       - "scripts/red_team_test.sh"
       - "scripts/marker_surface_test.sh"
       - "scripts/exec_args_test.sh"
+      - "scripts/vm_test.sh"
       - "scripts/qemu_runtime.sh"
       - "scripts/qemu_runtime_preflight_test.sh"
       - "scripts/tooling_red_team_test.sh"
@@ -242,6 +254,7 @@ routes:
       - "make all"
       - "make test-qemu-preflight"
       - "make test-static-analysis"
+      - "make test-vm"
       - "make test-red-team"
       - "make test-blue-team"
       - "make test-red-team-tooling"
@@ -249,11 +262,8 @@ routes:
       - "check_harness_contract"
 
 mimo_next_tasks:
-  - id: "cow-demand-paging-guard-pages"
-    priority: "P0"
-    success: "Add copy-on-write fork, demand paging, stack guard pages, and deterministic fault-injection rollback with exact frame-accounting gates."
   - id: "waitpid-signals-pipes"
-    priority: "P1"
+    priority: "P0"
     success: "Add waitpid options, minimal signal delivery, and pipes only after VM ownership is proven."
   - id: "red-blue-fuzz-continuation"
     priority: "P1"

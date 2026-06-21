@@ -47,7 +47,7 @@ Verification gate:
 - `make test-process-lifecycle` proves exec replaces the old mappings and resets heap state after fork/wait lifecycle activity.
 
 Next hardening:
-- Add COW/demand-paging ownership, guard pages, and deterministic VM fault injection; argv/envp and per-process descriptor tables are runtime-proven.
+- Add waitpid options, minimal signal delivery, and pipes; COW/demand/guard ownership, argv/envp, and per-process descriptor tables are runtime-proven.
 
 ## RT-FS-001
 
@@ -231,3 +231,57 @@ Verification gate:
 - `make test-red-team` proves retired-token, namespace-crossing, unauthorized, and replay attempts are blocked.
 
 Next hardening:
+- Extend marker grants only alongside new selftest namespaces; keep token replay probes active.
+
+## RT-VM-001
+
+Goal: prevent writable physical aliases after fork.
+
+Implemented control:
+- Two-phase clone allocates and validates all child tables before modifying the parent.
+- Writable user PTEs become read-only `PAGE_COW` mappings in both address spaces.
+- COW write faults copy only when the frame has multiple owners.
+
+Verification gate:
+- `make test-vm` proves shared state, split-on-write, and parent/child isolation.
+- `make test-red-team` attempts a writable-alias bypass.
+
+## RT-VM-002
+
+Goal: make physical-frame ownership explicit and underflow-safe.
+
+Implemented control:
+- `frame_retain`, `frame_release`, and `frame_get_refcount` own every shared user mapping.
+- `frame_free` remains a compatibility alias for release.
+- Permanent low frames cannot transition below their reserved reference.
+
+Verification gate:
+- `make test-vm` proves exact frame accounting.
+- `make test-red-team` attempts double release and underflow.
+
+## RT-VM-003
+
+Goal: keep one permanent unmapped page below every fixed user stack.
+
+Implemented control:
+- `USER_STACK_GUARD_BOTTOM..USER_STACK_BOTTOM` is never demand mapped.
+- VM fault policy classifies the range before heap demand allocation.
+- Fatal ring-3 faults exit only the current process; kernel faults still panic.
+
+Verification gate:
+- `make test-vm` proves the guard child terminates and its parent resumes.
+- `make test-red-team` attempts direct guard classification bypass.
+
+## RT-VM-004
+
+Goal: preserve mappings and frame accounting when fault recovery cannot allocate.
+
+Implemented control:
+- Selftest images provide deterministic allocation-failure injection.
+- COW PTE replacement occurs only after physical copy succeeds.
+- Demand faults install a page only after both frame and page-table ownership succeed.
+- Clone allocation is two-phase so pre-commit failure leaves parent PTEs unchanged.
+
+Verification gate:
+- `make test-vm` proves clone, COW, and demand OOM rollback.
+- `make test-red-team` replays COW and demand rollback attacks.

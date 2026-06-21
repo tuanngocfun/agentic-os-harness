@@ -32,9 +32,9 @@ agent_docs/
 # Agent Progress Log
 
 ## Current Task
-Implement COW fork, demand paging, stack guard pages, and deterministic VM rollback
+Implement waitpid options, minimal signals, and pipes on the proven VM ownership layer
 
-## Status: NEXT_P0_VM
+## Status: NEXT_P0_PROCESS_IPC
 
 ## Completed Steps
 - [x] Boot sector written (boot.asm) — 2026-05-31 10:00
@@ -44,9 +44,11 @@ Implement COW fork, demand paging, stack guard pages, and deterministic VM rollb
 - [x] IDT setup (idt.asm + idt.c) — 2026-05-31 12:00
 
 ## Next Steps
-- [ ] Define frame ownership and COW page-table invariants
-- [ ] Add demand-fault and user-stack guard-page handling
-- [ ] Prove allocation-failure rollback with exact frame accounting and adversarial probes
+- [x] Define frame ownership and COW page-table invariants
+- [x] Add demand-fault and user-stack guard-page handling
+- [x] Prove allocation-failure rollback with exact frame accounting and adversarial probes
+- [ ] Define waitpid option semantics and process wakeup invariants
+- [ ] Add minimal signal delivery and pipe ownership gates
 
 ## Blockers
 - None currently

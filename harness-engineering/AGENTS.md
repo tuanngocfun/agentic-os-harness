@@ -72,7 +72,7 @@ llms.txt                  ← Root discovery index for agents
 - **Build-config contract** — `KERNEL_DEFINES` must be tracked through `build/kernel_defines.stamp`; after a selftest build, plain `make all` must rebuild default kernel objects before `make test`.
 - **Git contract** — Inspect status/diff before handoff; stage only explicit paths after approval; never stage deletions or mutate history without explicit user request
 - **Claim contract** — A subsystem is not "working" until `harness_profile.yaml` marks it claimable and a targeted runtime gate proves it.
-- **Limit contract** — Passing all current gates proves only the catalogued behaviors. COW fork, demand paging, guard pages, signals, SMP safety, persistent storage, networking, and broad security remain unproven.
+- **Limit contract** — Passing all current gates proves only the catalogued behaviors. The VM gate covers user-page COW fork, lazy zero-filled heap pages, one fixed stack guard, frame accounting, and tested rollback paths; swap, automatic stack growth, signals, SMP safety, persistent storage, networking, and broad security remain unproven.
 - **Format contract** — Markdown for instructions, YAML for `harness_profile.yaml`, JSONL for runtime evidence, HTML only for rendered reports/dashboards.
 
 ## Engineering Rubric
@@ -110,4 +110,5 @@ llms.txt                  ← Root discovery index for agents
 - [x] Phase 12: Stage-2 through process lifecycle evidence — current profile and deep gates synchronized
 - [x] Phase 13: Per-process file-descriptor ownership — fork inheritance, shared offsets, selective close-on-exec, and exit cleanup proven
 - [x] Phase 14: Exec argv/envp user-stack contract — transactional copy-in, rollback, aligned stack, and ring-3 validation proven
-- [ ] Phase 15: COW/demand paging, guard pages, and VM fault-injection rollback — current P0 route
+- [x] Phase 15: COW/demand paging, guard pages, and VM fault-injection rollback — scoped runtime evidence synchronized
+- [ ] Phase 16: `waitpid` options, minimal signals, and pipes — current P0 route

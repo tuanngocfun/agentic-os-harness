@@ -46,3 +46,10 @@ Failure marker:
 ## Tooling Adversarial Gate
 
 `make test-red-team-tooling` covers host/editor/tooling failures that do not require guest execution. It writes `build/red-team/tooling-findings.jsonl` and preserves both the failing reproduction and the current blocking control. It is not a compiler certification or security pass.
+VM defense evidence additionally includes:
+- `RED_VM_COW_ALIAS_BLOCKED`
+- `RED_VM_REFCOUNT_UNDERFLOW_BLOCKED`
+- `RED_VM_GUARD_BYPASS_BLOCKED`
+- `RED_VM_FAULT_ROLLBACK_BLOCKED`
+
+The functional VM proof is separate: `QEMU_BIOS_DIR=/tmp/qemu-test-bios make test-vm`.

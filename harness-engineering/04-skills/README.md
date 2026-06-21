@@ -225,8 +225,8 @@ Mỗi skill phải có:
 1. Pick exactly one route from `harness_profile.yaml`.
 2. Keep the diff inside that route unless the handoff explicitly explains why a second route is necessary.
 3. Never upgrade a subsystem from scaffold/partial to working without a targeted runtime gate.
-4. Prefer the current P0: COW fork, demand paging, stack guard pages, and deterministic VM fault/allocation rollback.
-5. Do not add networking, graphics, or more shell breadth before COW/demand-paging ownership and fault rollback are proven.
+4. Prefer the current P0: waitpid options, minimal signal delivery, and pipe ownership on the proven VM layer.
+5. Do not add networking, graphics, or more shell breadth before waitpid, signals, and pipes have targeted lifecycle gates.
 
 **Verification:**
 - `check_harness_contract.sh` passes.

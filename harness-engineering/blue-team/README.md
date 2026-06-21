@@ -22,3 +22,6 @@ This area turns red-team findings into defenses and strict regression gates. It 
 - `make test-meta-loop` composes tooling red-team, guest red-team, and contract validation.
 
 The workflow is defined in `../14-meta-loop/README.md`.
+## VM Control Gate
+
+`make test-vm` proves the scoped COW, lazy heap, guard-page, and rollback controls. `make test-red-team` separately attacks those controls through `RT-VM-001..004`. Neither gate is a broad memory-safety or production-security certification.

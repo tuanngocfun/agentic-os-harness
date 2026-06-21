@@ -176,7 +176,7 @@ Current claim policy:
 - `process` is claimable for process-record setup, per-process CR3 switching, syscall/brk/exec entry, true fork parent/child return, blocking wait, exit-to-scheduler, zombie reap, copied-address-space isolation, exec image replacement, bounded argc/argv/envp stack construction with malformed-input rollback, and per-process descriptor isolation/inheritance/CLOEXEC/exit cleanup through `make test-usermode`, `make test-address-space`, `make test-process-syscall`, `make test-process-lifecycle`, `make test-exec-args`, and `make test-process-fd`.
 - `user_mode` is claimable only as a ring-3 transition and user/supervisor page-fault proof through `make test-usermode`.
 - Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. `scripts/shell_io_test.sh` is the separate targeted route for `echo ok`; argument-bearing commands beyond that need their own unambiguous I/O proof.
-- Copy-on-write fork, demand paging, guard pages, `waitpid` options, signals, persistent storage, networking, graphics mode, and additional shell breadth remain unclaimed until they have targeted runtime gates.
+- `make test-vm` provides scoped COW fork, demand-zero heap, fixed stack-guard, frame-accounting, and rollback evidence. Swap, automatic stack growth, `waitpid` options, signals, persistent storage, networking, graphics mode, and additional shell breadth remain unclaimed.
 - Security posture is `known_red_team_attacks_blocked_security_not_complete`; `make test-red-team` currently proves the known attack probes are blocked and writes JSONL evidence.
 
 ## Build-Config Rebuild Protocol
