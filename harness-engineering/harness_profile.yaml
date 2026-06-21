@@ -1,8 +1,8 @@
 profile_version: "2026-06-20"
 profile_name: "mimo-v2.5pro-os-harness-profile"
-project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_process_lifecycle_per_process_fds_red_blue"
+project_phase: "boot_to_shell_proven_stage2_preemptive_memory_ramdisk_vfs_simplefs_file_syscalls_elf_loader_process_lifecycle_per_process_fds_marker_trust_exec_args_red_blue_qemu_evidence"
 source_of_truth: true
-status_last_verified: "2026-06-20"
+status_last_verified: "2026-06-21"
 
 scope_limits:
   broad_safety_proven: false
@@ -10,7 +10,6 @@ scope_limits:
   unproven:
     - "copy_on_write_fork"
     - "waitpid_options"
-    - "argv_envp"
     - "signals"
     - "smp_safe_scheduling"
     - "persistent_storage"
@@ -24,12 +23,34 @@ format_policy:
   rendered_reports: "html"
   rule: "Instruction files stay concise Markdown; machine state stays YAML/JSONL; HTML is for rendered reports, not agent input contracts."
 
+qemu_runtime:
+  mandatory: true
+  override: "QEMU_BIOS_DIR"
+  auto_discovery: false
+  fallback: false
+  skip_path: false
+  evidence_log: "build/qemu-runtime.jsonl"
+  executable: "qemu-system-i386"
+  version: "QEMU emulator version 4.2.1"
+  bios_files:
+    - name: "bios-256k.bin"
+      size: 262144
+      sha256: "9ecd1852625a19430006fa1b2b94a7ae49e459e7044eae17db602572a987b95c"
+    - name: "kvmvapic.bin"
+      size: 9216
+      sha256: "cdf057a71b07e3b52b19cbe210bdefa59250d01a9810b960f7fe1f98eed95a27"
+    - name: "vgabios-stdvga.bin"
+      size: 39424
+      sha256: "e7e2881a477678dd7daad694dc98e61109d87b74a91443d0cf082802a8991d6a"
+
 security_posture:
   claim: "known_red_team_attacks_blocked_security_not_complete"
   mode: "red_blue_regression_blocking"
   findings_log: "build/red-team/findings.jsonl"
+  tooling_findings_log: "build/red-team/tooling-findings.jsonl"
   blocked_findings:
     - "RT-HARNESS-001"
+    - "RT-HARNESS-003"
     - "RT-EXEC-001"
     - "RT-FS-001"
     - "RT-FS-002"
@@ -40,6 +61,8 @@ security_posture:
     - "RT-PROC-002"
     - "RT-SYSCALL-001"
     - "RT-SCHED-001"
+    - "RT-TOOLING-001"
+    - "RT-HARNESS-002"
 
 boot_profile:
   loader: "stage2_lba_loader"
@@ -80,7 +103,7 @@ claim_status:
   paging: "claimable_with_map_fault_user_supervisor_and_address_space_tests"
   syscall: "claimable_with_syscall_ring3_negative_and_file_io_tests"
   exception_panic: "claimable_with_exception_test_suite"
-  process: "claimable_with_ring3_fork_wait_exit_reap_exec_replacement_and_per_process_fd_tests"
+  process: "claimable_with_ring3_fork_wait_exit_reap_transactional_exec_argv_envp_and_per_process_fd_tests"
   scheduler: "claimable_with_scheduler_preemption_priority_fairness_tests"
   user_mode: "claimable_with_usermode_ring3_test"
   block_device: "claimable_with_ramdisk_runtime_test"
@@ -90,13 +113,17 @@ claim_status:
 
 fast_gates:
   - "make all"
+  - "make test-qemu-preflight"
   - "make test"
+  - "make test-static-analysis"
   - "bash harness-engineering/.agent/skills/regression-validation/scripts/check_harness_contract.sh"
   - "bash harness-engineering/.agent/skills/git-change-management/scripts/git_preflight.sh"
   - "git diff --check"
 
 deep_gates:
   - "make test-deep"
+  - "marker_surface_default_enosys_runtime_test"
+  - "exec_argv_envp_transactional_runtime_test"
   - "syscall_abi_proof"
   - "exception_panic_markers"
   - "scheduler_queue_rotation_and_explicit_context_switch_proof"
@@ -125,6 +152,8 @@ deep_gates:
 adversarial_gates:
   - "make test-red-team"
   - "make test-blue-team"
+  - "make test-red-team-tooling"
+  - "make test-meta-loop"
 
 pending_deep_gates: []
 
@@ -197,19 +226,35 @@ routes:
       - "include/vfs.h"
       - "include/syscall.h"
       - "scripts/red_team_test.sh"
+      - "scripts/marker_surface_test.sh"
+      - "scripts/exec_args_test.sh"
+      - "scripts/qemu_runtime.sh"
+      - "scripts/qemu_runtime_preflight_test.sh"
+      - "scripts/tooling_red_team_test.sh"
+      - "scripts/static_analysis_test.sh"
+      - ".vscode/c_cpp_properties.json"
+      - "agentic-os.code-workspace"
       - "harness-engineering/red-team/"
       - "harness-engineering/blue-team/"
+      - "harness-engineering/14-meta-loop/"
       - "harness-engineering/harness_profile.yaml"
     required_gates:
       - "make all"
+      - "make test-qemu-preflight"
+      - "make test-static-analysis"
       - "make test-red-team"
       - "make test-blue-team"
+      - "make test-red-team-tooling"
+      - "make test-meta-loop"
       - "check_harness_contract"
 
 mimo_next_tasks:
-  - id: "argv-envp-exec-stack"
+  - id: "cow-demand-paging-guard-pages"
     priority: "P0"
-    success: "Build a validated initial user stack containing argc, argv, and envp during exec, and prove malformed or oversized vectors fail without replacing the old image."
+    success: "Add copy-on-write fork, demand paging, stack guard pages, and deterministic fault-injection rollback with exact frame-accounting gates."
+  - id: "waitpid-signals-pipes"
+    priority: "P1"
+    success: "Add waitpid options, minimal signal delivery, and pipes only after VM ownership is proven."
   - id: "red-blue-fuzz-continuation"
     priority: "P1"
     success: "Keep expanding guest-only syscall, scheduler, paging, and ELF fuzz probes after each new feature lands."
@@ -222,5 +267,6 @@ forbidden_next_breadth:
 
 source_authority:
   - "harness-engineering/13-agent-routing-and-risk/README.md"
+  - "harness-engineering/14-meta-loop/README.md"
   - "harness-engineering/06-validation/README.md"
   - "harness-engineering/11-reference/README.md"

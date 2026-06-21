@@ -114,3 +114,9 @@ make clean
 - `serial-driver` — COM1 serial output for automated markers
 - `compile-and-run` — Build + QEMU boot test loop
 - `debug-kernel-panic` — Phân tích serial log, identify crash cause
+## Static And Meta-Loop Gates
+
+- Open `agentic-os.code-workspace` (or the `os` repository folder) so VS Code uses the freestanding i686 cross toolchain instead of host headers.
+- Run `make test-static-analysis` for C/header/ASM-ABI/editor changes.
+- Run `make test-red-team-tooling` for tooling or test-oracle findings.
+- Run `make test-meta-loop` before claiming a red/blue patch cycle is complete.

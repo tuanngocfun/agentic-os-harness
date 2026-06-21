@@ -65,6 +65,26 @@ Pass condition:
 10. For live kernel/shell tests, QEMU reaches timeout `124`; early exit `0` fails unless this is an explicit shutdown test.
 11. Shell-runtime test decodes VGA text and finds the visible shell banner plus `Available commands:`.
 
+## Mandatory QEMU Runtime Contract
+
+Every automated guest runtime gate must receive an explicit absolute `QEMU_BIOS_DIR`. The harness does not auto-discover BIOS data, fall back to another directory, honor a `SKIP_QEMU` path, reuse a stale serial log, or synthesize a pass. Run the negative preflight before release validation:
+
+```bash
+QEMU_BIOS_DIR=/tmp/qemu-test-bios make test-qemu-preflight
+```
+
+`scripts/qemu_runtime.sh` requires QEMU `4.2.1` and these regular, readable, non-symlink files:
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `bios-256k.bin` | 262144 | `9ecd1852625a19430006fa1b2b94a7ae49e459e7044eae17db602572a987b95c` |
+| `kvmvapic.bin` | 9216 | `cdf057a71b07e3b52b19cbe210bdefa59250d01a9810b960f7fe1f98eed95a27` |
+| `vgabios-stdvga.bin` | 39424 | `e7e2881a477678dd7daad694dc98e61109d87b74a91443d0cf082802a8991d6a` |
+
+Before launch, the helper truncates serial and QEMU logs. After launch, timeout-driven tests require status `124`; controlled interactive shell tests require status `0` after issuing monitor `quit`. Every run appends run ID, UTC timestamps, QEMU path/version, BIOS hashes, image hash, exit status, serial hash, and freshness verdict to `build/qemu-runtime.jsonl`. Missing QEMU, invalid BIOS, early exit, empty output, stale output, or absent exact markers fails.
+
+Standard automated runs use `-monitor none -nic none` and no host passthrough. `shell_test.sh` and `shell_io_test.sh` are the only controlled exceptions: they use the QEMU monitor solely for `sendkey`, `pmemsave`, and `quit` to prove keyboard/VGA behavior, still with `-nic none`, no host devices, and the same provenance checks.
+
 ## Shell-Runtime Protocol
 
 Current project phase:
@@ -79,6 +99,7 @@ Do not promote a subsystem from "scaffold" to "working" until it has a targeted 
 
 Default gates must stay fast, stable, and route-local:
 - `make all`
+- `QEMU_BIOS_DIR=/tmp/qemu-test-bios make test-qemu-preflight`
 - `make test`
 - `check_harness_contract.sh`
 - `git_preflight.sh`
@@ -86,6 +107,7 @@ Default gates must stay fast, stable, and route-local:
 
 Deep gates are explicit and may rebuild with selftest defines:
 - `make test-deep`
+- `make test-marker-surface`
 - `make test-syscall`
 - `make test-exception`
 - `make test-exception-div0`
@@ -104,11 +126,15 @@ Deep gates are explicit and may rebuild with selftest defines:
 - `make test-elf-loader`
 - `make test-process-syscall`
 - `make test-process-lifecycle`
+- `make test-exec-args`
+- `make test-process-fd`
 - `make test-e820-frame`
 - `make test-ramdisk`
 - `make test-vfs`
 - `make test-scheduler-safety`
 - `make test-shell-io`
+- `make test-static-analysis`
+- `make test-qemu-preflight`
 
 Adversarial gates are explicit red/blue defense-regression probes:
 - `make test-red-team`
@@ -146,11 +172,11 @@ Current claim policy:
 - `allocator` is claimable only as fixed-heap `kmalloc`/`kfree` allocation, reuse, free/coalescing accounting, and exhaustion through `make test-allocator`; it is not frame free/reuse accounting.
 - `block_device` is claimable only as a reserved, mapped ramdisk block device through `make test-ramdisk`.
 - `filesystem` is claimable only as the kernel VFS + flat SimpleFS runtime gate through `make test-vfs`; this does not claim file syscalls, ELF loading, persistence, directories, delete/rename, or POSIX semantics.
-- `elf_loader` is claimable as ELF32/i386 loading through `make test-elf-loader` and the VFS-backed exec routes: header/program-header validation, PT_LOAD materialization, BSS zero-fill, rejection paths, and transfer into a ring-3 entry. This does not claim argv/envp, dynamic linking, or persistent executable storage.
-- `process` is claimable for process-record setup, per-process CR3 switching, syscall/brk/exec entry, true fork parent/child return, blocking wait, exit-to-scheduler, zombie reap, copied-address-space isolation, exec image replacement, and per-process descriptor isolation/inheritance/CLOEXEC/exit cleanup through `make test-usermode`, `make test-address-space`, `make test-process-syscall`, `make test-process-lifecycle`, and `make test-process-fd`.
+- `elf_loader` is claimable as ELF32/i386 loading through `make test-elf-loader` and the VFS-backed exec routes: header/program-header validation, PT_LOAD materialization, BSS zero-fill, rejection paths, and transfer into a ring-3 entry. Argument/environment stack construction is separately claimable through `make test-exec-args`; dynamic linking and persistent executable storage remain unclaimed.
+- `process` is claimable for process-record setup, per-process CR3 switching, syscall/brk/exec entry, true fork parent/child return, blocking wait, exit-to-scheduler, zombie reap, copied-address-space isolation, exec image replacement, bounded argc/argv/envp stack construction with malformed-input rollback, and per-process descriptor isolation/inheritance/CLOEXEC/exit cleanup through `make test-usermode`, `make test-address-space`, `make test-process-syscall`, `make test-process-lifecycle`, `make test-exec-args`, and `make test-process-fd`.
 - `user_mode` is claimable only as a ring-3 transition and user/supervisor page-fault proof through `make test-usermode`.
 - Default `scripts/shell_test.sh` must stay scoped to shell readiness plus `help` command rendering. `scripts/shell_io_test.sh` is the separate targeted route for `echo ok`; argument-bearing commands beyond that need their own unambiguous I/O proof.
-- Copy-on-write fork, `waitpid` options, argv/envp, signals, persistent storage, networking, graphics mode, and additional shell breadth remain unclaimed until they have targeted runtime gates.
+- Copy-on-write fork, demand paging, guard pages, `waitpid` options, signals, persistent storage, networking, graphics mode, and additional shell breadth remain unclaimed until they have targeted runtime gates.
 - Security posture is `known_red_team_attacks_blocked_security_not_complete`; `make test-red-team` currently proves the known attack probes are blocked and writes JSONL evidence.
 
 ## Build-Config Rebuild Protocol
@@ -307,3 +333,9 @@ Each autonomous run should capture:
 - Safety verdict.
 - Risk classification.
 - Follow-up risks.
+## Static And Meta-Loop Validation
+
+- `make test-static-analysis` is the supported C/editor integrity gate. It uses the freestanding i686 cross compiler for default and all-feature syntax checks, then verifies cppcheck, shell syntax, editor JSON, and header provenance.
+- `make test-red-team-tooling` intentionally reproduces unsupported host-header resolution and a historical weak test oracle before proving current controls.
+- `make test-meta-loop` composes tooling adversarial evidence, guest red-team evidence, and harness-contract validation.
+- These gates narrow false success and configuration drift; they do not establish broad memory safety or production security.

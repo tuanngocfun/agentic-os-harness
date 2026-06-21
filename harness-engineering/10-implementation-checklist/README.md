@@ -32,10 +32,10 @@
 - [ ] `build/boot.bin` is exactly 512 bytes.
 - [ ] `build/boot_config.inc` matches `kernel.bin` size.
 - [ ] `make test` uses `-serial file:build/serial.log -monitor none -nic none`.
-- [ ] QEMU status is captured; timeout `124` is the normal liveness pass, and early exit `0` fails unless this is an explicit shutdown test.
-- [ ] Marker parser uses exact whole-line matching after CRLF normalization.
+- [x] QEMU status is captured; timeout `124` is the normal liveness pass, and early exit `0` fails unless this is an explicit shutdown test.
+- [x] Marker parser uses exact whole-line matching after CRLF normalization.
 - [x] `make test` finds `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, and `SHELL_READY`.
-- [ ] No failure marker appears.
+- [x] No failure marker appears.
 - [ ] Negative marker fixtures fail (`NOT_BOOT_OK`, `BOOT_OK_FAKE`, missing `KERNEL_INIT_OK`, panic after pass markers).
 - [ ] High-risk changes have artifact, marker, drift, and safety evidence.
 
@@ -48,7 +48,7 @@
 - [ ] Add shell-runtime validation before claiming the shell works.
 - [x] Process lifecycle, scheduler, syscall, user-mode, VFS, and ELF claims have targeted runtime gates.
 - [x] Add per-process descriptor ownership with fork inheritance/shared offsets, selective close-on-exec, and exit cleanup.
-- [ ] Add validated argc/argv/envp construction to exec's initial user stack.
+- [x] Add validated argc/argv/envp construction to exec's initial user stack.
 
 ## Phase 4 — Regression
 
@@ -59,7 +59,7 @@
 - [ ] Confirm machine evidence includes run id, timestamps, command status, artifact sizes/hashes, serial hash, marker verdict, and safety verdict.
 - [ ] Update memory summaries without hand-editing machine evidence verdicts.
 - [ ] Update `llms.txt` if docs or skills moved.
-- [ ] Review QEMU safety commands.
+- [x] Review QEMU safety commands and require explicit pinned `QEMU_BIOS_DIR` provenance.
 - [ ] Confirm multi-agent concurrency rules: one writer owner per worktree, build lock, QEMU pid cleanup.
 - [ ] Confirm Git preflight passes: status reported, diff summary captured, generated artifacts ignored/untracked, no unapproved staged deletions.
 

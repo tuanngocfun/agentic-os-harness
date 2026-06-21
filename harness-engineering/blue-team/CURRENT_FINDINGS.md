@@ -121,3 +121,35 @@ Status: blocked by current blue control; keep regression probe active.
 - Verification gate: `make test-red-team`
 
 Status: blocked by current blue control; keep regression probe active.
+## RT-TOOLING-001
+
+- Impact: host-header shadowing can create hundreds of false IDE errors and can hide which compiler/header model actually owns kernel code.
+- Attack/defense gate: `make test-red-team-tooling`
+- Expected marker: `RED_TOOLING_HEADER_SHADOW_BLOCKED`
+- Machine evidence: `build/red-team/tooling-findings.jsonl`
+- Blue control: tracked VS Code configuration selects the i686 cross compiler, `-ffreestanding`, and repository include roots; static analysis verifies exact header provenance.
+- Verification gate: `make test-static-analysis` plus `make test-red-team-tooling`
+
+Status: blocked by current blue control; keep unsupported-host-compile reproduction active.
+
+## RT-HARNESS-002
+
+- Impact: a false-positive mapping marker weakens trust in process isolation evidence even if the implementation itself is correct.
+- Attack/defense gate: `make test-red-team-tooling`
+- Expected marker: `RED_ADDRSPACE_ORACLE_HARDENED`
+- Machine evidence: `build/red-team/tooling-findings.jsonl`
+- Blue control: each CR3 is activated and resolved back to its intended physical frame before the isolation tasks run; all allocated resources are released on success and failure paths.
+- Verification gate: `make test-address-space` plus `make test-red-team-tooling`
+
+Status: blocked by current blue control; keep the historical weak-oracle witness active.
+
+## RT-HARNESS-003
+
+- Impact: a public token, cross-test marker namespace, or reusable permission lets ring-3 code manufacture success evidence after a legitimate marker path is discovered.
+- Attack/defense gate: `make test-red-team`
+- Expected marker: `RED_MARKER_REPLAY_BLOCKED`
+- Machine evidence: `build/red-team/findings.jsonl`
+- Blue control: marker permissions are kernel-owned, process-local, namespace-specific, and one-shot; fork copies the remaining mask, exec preserves it, destruction clears it, and normal kernels do not compile the handler.
+- Verification gate: `make test-marker-surface`, `make test-process-lifecycle`, and `make test-red-team`
+
+Status: blocked by current blue control; keep retired-token, namespace-crossing, and replay probes active.

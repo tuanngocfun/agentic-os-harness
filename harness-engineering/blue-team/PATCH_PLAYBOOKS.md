@@ -47,7 +47,7 @@ Verification gate:
 - `make test-process-lifecycle` proves exec replaces the old mappings and resets heap state after fork/wait lifecycle activity.
 
 Next hardening:
-- Add argv/envp setup and stricter lifecycle ownership; per-process descriptor tables are now runtime-proven.
+- Add COW/demand-paging ownership, guard pages, and deterministic VM fault injection; argv/envp and per-process descriptor tables are runtime-proven.
 
 ## RT-FS-001
 
@@ -179,3 +179,55 @@ Verification gate:
 
 Next hardening:
 - Add fault-injection points for each fork allocation step and repeated fork/exit/wait stress across process-table exhaustion.
+## RT-TOOLING-001
+
+Goal: make editor and static-analysis header resolution match the supported freestanding build.
+
+Implemented control:
+- Track `.vscode/c_cpp_properties.json` and `agentic-os.code-workspace`.
+- Select `i686-elf-gcc`, `-ffreestanding`, and repository-local include roots.
+- Compile default and all-feature branches with strict warnings-as-errors.
+- Verify `string.h`, `elf.h`, `syscall.h`, and the cross-toolchain `stdint-gcc.h` through compiler `-H` traces.
+
+Verification gate:
+- `make test-static-analysis` proves supported compiler syntax, static checks, editor JSON, and header provenance.
+- `make test-red-team-tooling` reproduces the unsupported host-header failure and proves the supported route is clean.
+
+Next hardening:
+- Generate `compile_commands.json` if the build adopts multiple per-file flag families.
+- Keep absolute toolchain paths configurable when the project becomes portable across hosts.
+
+## RT-HARNESS-002
+
+Goal: require the address-space test marker to prove actual page-table state, not allocation success.
+
+Implemented control:
+- Activate each process CR3 and resolve the shared test virtual address.
+- Require each resolved physical address to equal its intended frame before emitting `ADDRSPACE_MAP_OK`.
+- Run isolation writes only after map verification.
+- Restore the kernel CR3 and reclaim address spaces/frames on every setup outcome.
+
+Verification gate:
+- `make test-address-space` proves distinct physical mappings and isolated values at one shared virtual address.
+- `make test-red-team-tooling` preserves the historical weak oracle and checks the current hardening.
+
+Next hardening:
+- Add deterministic allocation-failure injection for each address-space setup step.
+- Expand the proof to user/supervisor and read/write permission differences across process directories.
+
+## RT-HARNESS-003
+
+Goal: make selftest markers process-owned, namespace-specific, one-shot evidence rather than a public-token protocol.
+
+Implemented control:
+- Remove the public token from the syscall ABI and authorize by the current process's kernel-owned marker mask.
+- Compile marker and diagnostic syscall cases only into the selftest images that use them; the default syscall surface returns `SYSCALL_ENOSYS`.
+- Grant each selftest only its own marker IDs, consume a permission on successful emission, copy remaining permissions on fork, preserve them on exec, and clear them on process destruction.
+- Retain the retired-token, cross-namespace, and replay attacks as red-team regressions.
+
+Verification gate:
+- `make test-marker-surface` proves a near-default image has no marker handler.
+- `make test-process-lifecycle` proves fork inheritance and exec preservation through child, parent, and replacement-image markers.
+- `make test-red-team` proves retired-token, namespace-crossing, unauthorized, and replay attempts are blocked.
+
+Next hardening:

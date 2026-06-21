@@ -8,6 +8,8 @@ The OS security posture is evidence-scoped. Functional gates prove specific boot
 
 ## Safe Default
 
+All automated runtime gates require an explicit `QEMU_BIOS_DIR` and pass through `scripts/qemu_runtime.sh`. The helper pins QEMU 4.2.1 plus BIOS file sizes and SHA-256 hashes, truncates logs before launch, and records fresh runtime evidence. There is no auto-discovery, fallback BIOS directory, `SKIP_QEMU`, or stale-log pass.
+
 ```bash
 qemu-system-i386 \
   -drive file=build/os.img,format=raw \
@@ -82,6 +84,7 @@ If provenance or integrity cannot be established, stop and request human approva
 
 Current blocked findings:
 - `RT-HARNESS-001`: no-capability ring-3 marker forgery is rejected.
+- `RT-HARNESS-003`: retired-token, namespace-crossing, and marker replay attacks are rejected.
 - `RT-SYSCALL-001`: ring-3 access to test-only ABI marker syscall is rejected.
 - `RT-EXEC-001`: exec residual heap mapping is rejected by post-exec pointer validation.
 - `RT-SCHED-001`: preemptive interrupt-frame tasks cannot enter cooperative `yield()` switching.

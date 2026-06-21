@@ -41,3 +41,5 @@
 - [Swift.org Contributing](https://www.swift.org/contributing/)
 - [Netflix TechBlog - Improving Pull Request Confidence](https://netflixtechblog.medium.com/improving-pull-request-confidence-for-the-netflix-tv-app-b85edb05eb65)
 - [Tesla Fleet Telemetry Contributing](https://github.com/teslamotors/fleet-telemetry/blob/main/CONTRIBUTING.md)
+- [Red/Blue Meta Loop](./14-meta-loop/README.md) — Observe, reproduce, attack, patch, verify, release, and feed evidence back into the harness.
+- [Patch Releases](./releases/) — Evidence-scoped patch announcements with residual-risk boundaries.

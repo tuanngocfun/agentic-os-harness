@@ -12,12 +12,15 @@ This area is for adversarial probes against the teaching OS. A passing red-team 
 ## Current Gate
 
 ```bash
-make test-red-team
+QEMU_BIOS_DIR=/tmp/qemu-test-bios make test-red-team
 ```
+
+`QEMU_BIOS_DIR` is mandatory and is validated by `scripts/qemu_runtime.sh`; no fallback, skip, or stale-log pass exists.
 
 Expected evidence:
 - `RED_TEAM_TEST`
 - `RED_MARKER_FORGERY_BLOCKED`
+- `RED_MARKER_REPLAY_BLOCKED`
 - `RED_SYSCALL_PRIVILEGE_BLOCKED`
 - `RED_EXEC_RESIDUAL_MAPPING_BLOCKED`
 - `RED_SCHED_YIELD_MIXING_BLOCKED`
@@ -40,3 +43,6 @@ Failure marker:
 - Keep probes deterministic enough for CI-style parsing.
 - Do not use host networking, host device passthrough, host mounts, or QEMU monitor access.
 - Document impact, attack gate, expected marker, blue control, and follow-up hardening gate.
+## Tooling Adversarial Gate
+
+`make test-red-team-tooling` covers host/editor/tooling failures that do not require guest execution. It writes `build/red-team/tooling-findings.jsonl` and preserves both the failing reproduction and the current blocking control. It is not a compiler certification or security pass.

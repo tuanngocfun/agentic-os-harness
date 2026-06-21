@@ -12,7 +12,7 @@ MiMo deserves to continue, but not with a wide-open "build the OS" mandate.
 
 Proven now:
 - Boot image builds from `boot.bin`, `stage2.bin`, `kernel.elf`, `kernel.bin`, and `os.img`.
-- QEMU boot test proves `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, and `SHELL_READY`.
+- QEMU boot test proves `STAGE2_OK`, `BOOT_OK`, `KERNEL_INIT_OK`, and `SHELL_READY`. Every runtime gate requires explicit pinned `QEMU_BIOS_DIR` input and records fresh execution provenance in `build/qemu-runtime.jsonl`.
 - Shell runtime test proves keyboard input, shell dispatch, and VGA output for `help`.
 - Shell I/O test proves `echo ok` by requiring both the serial `SHELL_ECHO_OK` marker and a distinct VGA output line after the typed command.
 - Timer selftest proves PIT-backed tick counter increments when `make test-timer` passes.
@@ -23,13 +23,13 @@ Proven now:
 - Syscall negative-path selftest proves ring-3 valid syscall execution and controlled errors for invalid syscall numbers, kernel-space pointers, and unmapped user pointers.
 - Memory selftest proves E820-backed usable-memory detection for the configured 512 MiB QEMU run. E820/frame selftest proves E820 map handoff and physical frame allocation/free/reuse/exhaustion. Allocator selftest proves fixed-heap `kmalloc`/`kfree` allocation, reuse, free/coalescing accounting, and exhaustion.
 - User-mode selftest proves a ring-3 transition and controlled user/supervisor page fault. It does not prove full userland.
-- VFS and SimpleFS selftests prove a volatile root-only flat filesystem on ramdisk. File syscall selftest proves VFS-backed ring-3 open/read/write/close/stat. ELF loader prep selftest proves VFS-backed ELF32/i386 header validation, PT_LOAD materialization into user-mapped pages, BSS zero-fill, and negative paths. Process syscall selftest proves ring-3 `getpid`, dynamic `brk`, and VFS-backed exec entry. Process lifecycle selftest proves true fork parent/child return, private copied memory, blocking wait, child exit status, zombie reap, and exec image replacement.
-- Red/blue adversarial gate proves the current known attack catalog is blocked, including marker forgery, test-only syscall marker abuse, exec residual mapping and fd leaks, failed exec cleanup, process-destroy and fork-failure cleanup, SimpleFS exhaustion/namespace abuse, preemptive-yield mixing, and overlapping ELF segment rejection. This corrects the security posture without claiming broad hardening.
+- VFS and SimpleFS selftests prove a volatile root-only flat filesystem on ramdisk. File syscall selftest proves VFS-backed ring-3 open/read/write/close/stat. ELF loader prep selftest proves VFS-backed ELF32/i386 header validation, PT_LOAD materialization into user-mapped pages, BSS zero-fill, and negative paths. Process syscall selftest proves ring-3 `getpid`, dynamic `brk`, and VFS-backed exec entry. Process lifecycle selftest proves true fork parent/child return, private copied memory, blocking wait, child exit status, zombie reap, and exec image replacement. `make test-exec-args` proves bounded argc/argv/envp copy-in, transactional failure rollback, a 16-byte-aligned initial stack, and ring-3 content validation.
+- Red/blue adversarial gate proves the current known attack catalog is blocked, including marker forgery, retired-token reuse, namespace crossing, one-shot replay, test-only syscall marker abuse, exec residual mapping and fd leaks, failed exec cleanup, process-destroy and fork-failure cleanup, SimpleFS exhaustion/namespace abuse, preemptive-yield mixing, and overlapping ELF segment rejection. This corrects the security posture without claiming broad hardening.
 
 Not proven:
 - Production-grade virtual memory or dynamic heap growth from arbitrary frame runs.
 - Full userland syscall ABI coverage beyond the proven syscall set and negative paths.
-- Copy-on-write fork, `waitpid` options, argv/envp, signals, or SMP-safe lifecycle behavior.
+- Copy-on-write fork, demand paging, guard pages, `waitpid` options, signals, or SMP-safe lifecycle behavior.
 - SMP-safe scheduling or production-grade synchronization.
 - Persistent storage, networking, graphics, dynamic linking, and production-grade userland.
 - Broad adversarial hardening beyond the currently blocked red-team catalog.
@@ -58,7 +58,7 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | Scope | Rating | Why |
 |---|---:|---|
 | Boot-to-shell teaching milestone | 80% | Build, boot markers, keyboard IRQ, shell dispatch, and VGA runtime proof pass. |
-| Credible protected OS core | 82% | GDT/IDT, timer preemption, syscall negative paths, process lifecycle, per-process descriptors, paging faults/isolation, E820/frame lifecycle, allocator behavior, VFS, and ELF entry have targeted gates, but COW VM, argv/envp, signals, SMP safety, persistent storage, and full userland remain unproven. |
+| Credible protected OS core | 82% | GDT/IDT, timer preemption, syscall negative paths, process lifecycle, per-process descriptors, paging faults/isolation, E820/frame lifecycle, allocator behavior, VFS, and ELF entry have targeted gates, but COW VM, demand paging, guard pages, signals, SMP safety, persistent storage, and full userland remain unproven. |
 | Blended current project promise | 82% | Real stage-one implementation plus several stage-two proofs; remaining risk is deeper Unix-like process semantics and hardening, not storage or ELF-entry plumbing. |
 
 ## Routing Matrix
@@ -77,9 +77,9 @@ Fix pattern: keep normal boot/shell gates fast and stable; run risky subsystem p
 | `memory_detection` | BIOS E820 detection, memory summaries, targeted memory/frame tests | `make test-memory` proves the configured QEMU usable-memory marker; `make test-e820-frame` proves E820 handoff and frame lifecycle; `make test-allocator` proves fixed-heap behavior | Production-grade heap growth or full VM memory-zone policy |
 | `user_mode` | GDT/TSS selectors, user-mode entry, syscall/exception boundary | `make test-usermode` proves ring-3 transition and supervisor-page fault from user mode; address-space isolation is separately proven by `make test-address-space` | Userland ABI completeness or syscall negative-path coverage |
 | `syscall_negative` | syscall validation, page-aware user pointer checks, ring-3 syscall harness | `make test-syscall-negative` proves invalid numbers, kernel pointers, unmapped user pointers, and valid ring-3 syscall marker path | Complete POSIX-style syscall ABI or resource-limit policy |
-| `elf_loader_prep` | ELF parser/loader, VFS-backed file reads, user-page materialization | `make test-elf-loader` proves valid ELF32/i386 PT_LOAD copy, BSS zero-fill, metadata, and invalid/truncated/missing rejection | argv/envp, dynamic linking, or persistent storage |
-| `process_syscall_elf_entry` | process syscall ABI, brk page lifecycle, VFS-backed exec entry transfer | `make test-process-syscall` proves ring-3 `getpid`, `brk` query/grow/read-write/shrink, no-child `wait`, and transfer into a tiny ELF entry | Fork/wait lifecycle semantics or argv/envp |
-| `process_lifecycle` | canonical interrupt frame, fork clone, scheduler blocking/exit, zombie reap, exec replacement, descriptor ownership | `make test-process-lifecycle` plus `make test-process-fd` prove lifecycle and process-local descriptor isolation, real-fork inheritance/shared offsets, CLOEXEC, and exit cleanup | Copy-on-write, `waitpid` options, argv/envp, signals, or SMP safety |
+| `elf_loader_prep` | ELF parser/loader, VFS-backed file reads, user-page materialization | `make test-elf-loader` proves valid ELF32/i386 PT_LOAD copy, BSS zero-fill, metadata, and invalid/truncated/missing rejection | Dynamic linking or persistent storage |
+| `process_syscall_elf_entry` | process syscall ABI, brk page lifecycle, VFS-backed exec entry transfer | `make test-process-syscall` proves ring-3 `getpid`, `brk` query/grow/read-write/shrink, no-child `wait`, and transfer into a tiny ELF entry | Fork/wait lifecycle semantics; argv/envp is separately proven by `make test-exec-args` |
+| `process_lifecycle` | canonical interrupt frame, fork clone, scheduler blocking/exit, zombie reap, exec replacement, descriptor ownership | `make test-process-lifecycle`, `make test-exec-args`, plus `make test-process-fd` prove lifecycle, transactional argv/envp exec and process-local descriptor isolation, real-fork inheritance/shared offsets, CLOEXEC, and exit cleanup | Copy-on-write, demand paging, guard pages, `waitpid` options, signals, or SMP safety |
 | `adversarial_red_team` | Guest-only probes that attempt known attacks against blue controls | `make test-red-team`/`make test-blue-team` prove known attacks are blocked and write `build/red-team/findings.jsonl` | Security certification, host-escape testing, or broader hardening than the catalog covers |
 
 ## Format Policy
@@ -93,18 +93,18 @@ Findings from `considerations/` are part of the routing contract:
 
 ## Next MiMo Tasks
 
-1. `argv-envp-exec-stack`
-   Construct and validate argc/argv/envp on the new exec user stack, with rollback on malformed or oversized vectors.
+1. `cow-demand-paging-guard-pages`
+   Add COW fork, demand paging, user-stack guard pages, and deterministic allocation/fault injection with exact rollback accounting.
 
-2. `red-blue-fuzz-continuation`
-   Keep expanding guest-only syscall, scheduler, paging, and ELF fuzz probes after each new feature lands.
+2. `waitpid-signals-pipes`
+   Add waitpid options, minimal signal delivery, and pipes after VM ownership is strict.
 
-3. `core-stress-and-static-hardening`
-   Re-run syscall, scheduler, paging, E820, frame, allocator, VFS, and ELF-loader gates under broader stress/static review before adding unrelated OS breadth.
+3. `red-blue-fuzz-continuation`
+   Keep expanding guest-only syscall, scheduler, paging, exec, and ELF probes after each feature lands.
 
 ## Forbidden Next Work
 
-Do not add networking, graphics mode, or more shell commands before exec has a validated argv/envp user-stack contract. Existing filesystem and process-lifecycle claims remain limited to their named tests.
+Do not add networking, graphics mode, or more shell commands before COW/demand-paging ownership and fault rollback have targeted runtime gates. Existing filesystem and process-lifecycle claims remain limited to their named tests.
 
 ## External Practice Mapping
 
@@ -136,3 +136,6 @@ Each MiMo handoff must answer:
 - Evidence artifacts:
 - Remaining unproven behavior:
 - Rollback path:
+## Static Integrity Route
+
+Use `make test-static-analysis` whenever C headers, compiler flags, assembly ABI declarations, selftest branches, shell gates, or editor configuration change. Use `make test-red-team-tooling` when a reported defect may be caused by tooling drift or a weak test oracle. Finish the evidence cycle with `make test-meta-loop` and an evidence-scoped patch release.

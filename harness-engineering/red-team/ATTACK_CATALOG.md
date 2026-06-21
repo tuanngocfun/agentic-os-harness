@@ -111,3 +111,32 @@ Malformed ELF files can describe multiple `PT_LOAD` ranges that map the same use
 - Finding log ID: `RT-PROC-002`
 
 Fork clones a process record, kernel stack, page directory, page tables, and user frames. A mid-clone allocation failure can leak any partially owned resource or leave a phantom child. The current probe exhausts the low-frame pool, attempts `process_fork()`, requires failure, then verifies both frame accounting and process count return to their exact baselines.
+## RT-TOOLING-001: Host Header Shadowing
+
+- Subsystem: editor and static-analysis toolchain
+- Severity: medium
+- Attack/defense gate: `make test-red-team-tooling`
+- Evidence markers: `RED_TOOLING_HEADER_SHADOW_CONFIRMED`, `RED_TOOLING_HEADER_SHADOW_BLOCKED`
+- Finding log ID: `RT-TOOLING-001`
+
+Opening the parent home directory without a repo toolchain profile caused IntelliSense to resolve quoted kernel headers such as `string.h`, `elf.h`, and `syscall.h` to host headers. The attack gate intentionally compiles without `-Iinclude` to reproduce the undefined-type symptom, then requires the supported cross-compiler/header-provenance gate to pass.
+
+## RT-HARNESS-002: Address-Space Oracle Weakness
+
+- Subsystem: paging selftest harness
+- Severity: high
+- Attack/defense gate: `make test-red-team-tooling`
+- Evidence markers: `RED_ADDRSPACE_ORACLE_WEAKNESS_CONFIRMED`, `RED_ADDRSPACE_ORACLE_HARDENED`
+- Finding log ID: `RT-HARNESS-002`
+
+The address-space selftest previously treated successful allocation as successful mapping, allowing `ADDRSPACE_MAP_OK` without proving the expected physical frames were installed. The gate preserves the historical source witness and requires current CR3-specific physical-resolution checks plus deterministic cleanup.
+
+## RT-HARNESS-003: Retired Token, Namespace Crossing, And Replay
+
+- Subsystem: syscall test-marker authorization
+- Severity: high
+- Attack/defense gate: `make test-red-team`
+- Evidence marker: `RED_MARKER_REPLAY_BLOCKED`
+- Finding log ID: `RT-HARNESS-003`
+
+The old public marker token allowed any ring-3 caller that learned it to forge evidence. The current probe presents that retired token while requesting another test's namespace, then replays an authorized marker. Per-process kernel-owned permissions must reject namespace crossing and consume every authorization exactly once; fork copies remaining permissions, exec preserves them, and process destruction clears them.

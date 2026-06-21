@@ -32,9 +32,9 @@ agent_docs/
 # Agent Progress Log
 
 ## Current Task
-Implement validated argc/argv/envp construction on exec's initial user stack
+Implement COW fork, demand paging, stack guard pages, and deterministic VM rollback
 
-## Status: NEXT_P0
+## Status: NEXT_P0_VM
 
 ## Completed Steps
 - [x] Boot sector written (boot.asm) — 2026-05-31 10:00
@@ -44,9 +44,9 @@ Implement validated argc/argv/envp construction on exec's initial user stack
 - [x] IDT setup (idt.asm + idt.c) — 2026-05-31 12:00
 
 ## Next Steps
-- [ ] Define bounded user argv/envp copy-in and stack layout
-- [ ] Reject malformed/oversized vectors without replacing the old process image
-- [ ] Prove argc/argv/envp from the new ELF entry while preserving lifecycle, descriptor, and red/blue gates
+- [ ] Define frame ownership and COW page-table invariants
+- [ ] Add demand-fault and user-stack guard-page handling
+- [ ] Prove allocation-failure rollback with exact frame accounting and adversarial probes
 
 ## Blockers
 - None currently
