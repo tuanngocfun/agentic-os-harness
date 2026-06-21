@@ -1,7 +1,9 @@
 #include "idt.h"
-#ifdef ENABLE_PAGING_SELFTEST
+#include "interrupt_frame.h"
 #include "paging.h"
-#endif
+#include "process.h"
+#include "scheduler.h"
+#include "vm.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -88,6 +90,59 @@ volatile uint32_t page_fault_repair_physical = 0;
 volatile uint32_t page_fault_repair_flags = 0;
 #endif
 
+uint32_t page_fault_dispatch(uint32_t frame_esp, uint32_t error_code) {
+    struct interrupt_frame *frame = (struct interrupt_frame *)frame_esp;
+    uint32_t fault_addr;
+
+    asm volatile("mov %%cr2, %0" : "=r"(fault_addr));
+
+#ifdef ENABLE_PAGING_SELFTEST
+    if (page_fault_expected && page_fault_caught == 0) {
+        page_fault_addr = fault_addr;
+        if (fault_addr == page_fault_repair_virtual) {
+            paging_map_page(page_fault_repair_virtual,
+                            page_fault_repair_physical,
+                            page_fault_repair_flags);
+            page_fault_expected = 0;
+        }
+        page_fault_caught = 1;
+        if (fault_addr == page_fault_repair_virtual) {
+            return frame_esp;
+        }
+    }
+#endif
+
+#ifdef ENABLE_USERMODE_SELFTEST
+    if (fault_addr == 0x00700000 && (error_code & 0x05) == 0x05) {
+        panic_puts("PAGING_USER_SUPERVISOR_FAULT_OK\n");
+    }
+#endif
+
+    if (frame && (frame->cs & 0x03) == 0x03 &&
+        (error_code & VM_FAULT_USER)) {
+        struct process *current = scheduler_get_current();
+        enum vm_fault_result result =
+            vm_handle_page_fault(current, fault_addr, error_code);
+
+        if (result == VM_FAULT_HANDLED) {
+            return frame_esp;
+        }
+        if (current) {
+            uint32_t exit_code = VM_EXIT_PAGE_FAULT;
+            if (result == VM_FAULT_GUARD) {
+                exit_code = VM_EXIT_GUARD_PAGE;
+            } else if (result == VM_FAULT_OOM) {
+                exit_code = VM_EXIT_OOM;
+            }
+            process_mark_exit(current, exit_code);
+            return scheduler_exit_current(frame_esp);
+        }
+    }
+
+    exception_handler(14, error_code);
+    return 0;
+}
+
 void exception_handler(uint32_t vector, uint32_t error_code) {
 #ifdef ENABLE_PAGING_SELFTEST
     if (vector == 14 && page_fault_expected && page_fault_caught == 0) {
@@ -105,15 +160,6 @@ void exception_handler(uint32_t vector, uint32_t error_code) {
     }
 #endif
 
-#ifdef ENABLE_USERMODE_SELFTEST
-    if (vector == 14) {
-        uint32_t fault_addr;
-        asm volatile("mov %%cr2, %0" : "=r"(fault_addr));
-        if (fault_addr == 0x00700000 && (error_code & 0x05) == 0x05) {
-            panic_puts("PAGING_USER_SUPERVISOR_FAULT_OK\n");
-        }
-    }
-#endif
 
     panic_puts("KERNEL_PANIC:0x");
     panic_puthex(vector);

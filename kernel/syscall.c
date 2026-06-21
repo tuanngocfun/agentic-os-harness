@@ -28,15 +28,9 @@ struct syscall_dispatch_control {
     int switch_requested;
 };
 
-static void brk_rollback_pages(uint32_t start_page, uint32_t end_page) {
-    for (uint32_t addr = start_page; addr < end_page; addr += 0x1000) {
-        uint32_t phys = paging_get_physical_address(addr) & 0xFFFFF000;
-        paging_unmap_page(addr);
-        if (phys) {
-            frame_free(phys);
-        }
-    }
-}
+#ifdef ENABLE_VM_SELFTEST
+static uint32_t vm_test_free_after_demand;
+#endif
 
 static int is_user_range_valid(uint32_t ptr, uint32_t size) {
     if (ptr < USER_SPACE_START) return 0;
@@ -639,7 +633,7 @@ static uint32_t syscall_handle(uint32_t syscall_num,
 
 #endif
 
-#if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST)
+#if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
         case SYS_TEST_MARKER: {
             struct process *current = process_get_current();
             if (!is_ring3(caller_cs) ||
@@ -749,6 +743,87 @@ static uint32_t syscall_handle(uint32_t syscall_num,
                     break;
                 case SYSCALL_MARK_LIFECYCLE_FAIL:
                     serial_puts("LIFECYCLE_FAIL\n");
+                    break;
+#endif
+#ifdef ENABLE_VM_SELFTEST
+                case SYSCALL_MARK_VM_DEMAND_ZERO: {
+                    uint32_t phys = paging_get_physical_address(PROCESS_HEAP_START) &
+                                    0xFFFFF000;
+                    uint32_t flags =
+                        paging_get_page_flags_in_directory(current->cr3,
+                                                           PROCESS_HEAP_START);
+                    if (!phys || !(flags & PAGE_WRITABLE) ||
+                        !(flags & PAGE_USER) ||
+                        frame_get_refcount(phys) != 1 ||
+                        *(volatile uint32_t *)PROCESS_HEAP_START != 0) {
+                        return SYSCALL_EINVAL;
+                    }
+                    vm_test_free_after_demand = frame_get_free_count();
+                    serial_puts("VM_DEMAND_ZERO_OK\n");
+                    break;
+                }
+                case SYSCALL_MARK_VM_COW_SHARED: {
+                    uint32_t phys = paging_get_physical_address(PROCESS_HEAP_START) &
+                                    0xFFFFF000;
+                    uint32_t flags =
+                        paging_get_page_flags_in_directory(current->cr3,
+                                                           PROCESS_HEAP_START);
+                    if (!phys || !(flags & PAGE_COW) ||
+                        (flags & PAGE_WRITABLE) ||
+                        frame_get_refcount(phys) != 2 ||
+                        *(volatile uint32_t *)PROCESS_HEAP_START !=
+                            0x13579BDFu) {
+                        return SYSCALL_EINVAL;
+                    }
+                    serial_puts("VM_COW_SHARED_OK\n");
+                    break;
+                }
+                case SYSCALL_MARK_VM_COW_SPLIT: {
+                    uint32_t phys = paging_get_physical_address(PROCESS_HEAP_START) &
+                                    0xFFFFF000;
+                    uint32_t flags =
+                        paging_get_page_flags_in_directory(current->cr3,
+                                                           PROCESS_HEAP_START);
+                    if (!phys || !(flags & PAGE_WRITABLE) ||
+                        (flags & PAGE_COW) ||
+                        frame_get_refcount(phys) != 1 ||
+                        *(volatile uint32_t *)PROCESS_HEAP_START !=
+                            0x2468ACE0u) {
+                        return SYSCALL_EINVAL;
+                    }
+                    serial_puts("VM_COW_SPLIT_OK\n");
+                    break;
+                }
+                case SYSCALL_MARK_VM_COW_ISOLATION: {
+                    uint32_t phys = paging_get_physical_address(PROCESS_HEAP_START) &
+                                    0xFFFFF000;
+                    if (!phys || frame_get_refcount(phys) != 1 ||
+                        *(volatile uint32_t *)PROCESS_HEAP_START !=
+                            0x13579BDFu) {
+                        return SYSCALL_EINVAL;
+                    }
+                    serial_puts("VM_COW_ISOLATION_OK\n");
+                    break;
+                }
+                case SYSCALL_MARK_VM_FRAME_ACCOUNTING:
+                    if (process_get_count() != 1 ||
+                        frame_get_free_count() != vm_test_free_after_demand) {
+                        return SYSCALL_EINVAL;
+                    }
+                    serial_puts("VM_FRAME_ACCOUNTING_OK\n");
+                    break;
+                case SYSCALL_MARK_VM_GUARD_TERMINATION:
+                    if (process_get_count() != 1 ||
+                        frame_get_free_count() != vm_test_free_after_demand) {
+                        return SYSCALL_EINVAL;
+                    }
+                    serial_puts("VM_GUARD_TERMINATION_OK\n");
+                    break;
+                case SYSCALL_MARK_VM_DONE:
+                    serial_puts("VM_OK\n");
+                    break;
+                case SYSCALL_MARK_VM_FAIL:
+                    serial_puts("VM_FAIL\n");
                     break;
 #endif
 #ifdef ENABLE_EXEC_ARGS_SELFTEST
@@ -947,36 +1022,16 @@ static uint32_t syscall_handle(uint32_t syscall_num,
                 return current->heap_end;  // Return current unchanged
             }
 
-            // Calculate page-aligned addresses
             uint32_t old_end_page = (current->heap_end + 0xFFF) & 0xFFFFF000;
             uint32_t new_end_page = (requested_brk + 0xFFF) & 0xFFFFF000;
 
-            // Growing heap - allocate pages
-            if (new_end_page > old_end_page) {
-                uint32_t mapped_until = old_end_page;
-                for (uint32_t addr = old_end_page; addr < new_end_page; addr += 0x1000) {
-                    uint32_t phys = paging_alloc_frame();
-                    if (!phys) {
-                        brk_rollback_pages(old_end_page, mapped_until);
-                        return current->heap_end;
-                    }
-                    paging_map_page(addr, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
-                    if (!paging_is_user_writable(addr)) {
-                        paging_unmap_page(addr);
-                        frame_free(phys);
-                        brk_rollback_pages(old_end_page, mapped_until);
-                        return current->heap_end;
-                    }
-                    mapped_until = addr + 0x1000;
-                }
-            }
-            // Shrinking heap - free pages
-            else if (new_end_page < old_end_page) {
-                for (uint32_t addr = new_end_page; addr < old_end_page; addr += 0x1000) {
-                    uint32_t phys = paging_get_physical_address(addr) & 0xFFFFF000;
-                    paging_unmap_page(addr);
+            /* Growth is lazy. Shrink releases only pages already faulted in. */
+            if (new_end_page < old_end_page) {
+                for (uint32_t addr = new_end_page; addr < old_end_page;
+                     addr += 0x1000) {
+                    uint32_t phys = paging_unmap_page_in_directory(current->cr3, addr);
                     if (phys) {
-                        frame_free(phys);
+                        frame_release(phys);
                     }
                 }
             }
