@@ -19,6 +19,8 @@ int paging_map_page_in_directory(uint32_t cr3, uint32_t virtual_addr, uint32_t p
 uint32_t paging_unmap_page_in_directory(uint32_t cr3, uint32_t virtual_addr);
 uint32_t paging_get_physical_address_in_directory(uint32_t cr3, uint32_t virtual_addr);
 uint32_t paging_get_page_flags_in_directory(uint32_t cr3, uint32_t virtual_addr);
+int paging_set_page_flags_in_directory(uint32_t cr3, uint32_t virtual_addr,
+                                       uint32_t flags);
 int paging_resolve_cow_fault(uint32_t cr3, uint32_t virtual_addr);
 uint32_t paging_alloc_frame(void);
 

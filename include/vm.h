@@ -24,5 +24,7 @@ enum vm_fault_result {
 enum vm_fault_result vm_handle_page_fault(struct process *proc,
                                           uint32_t fault_addr,
                                           uint32_t error_code);
+enum vm_fault_result vm_prepare_user_write_page(struct process *proc,
+                                                uint32_t page);
 
 #endif

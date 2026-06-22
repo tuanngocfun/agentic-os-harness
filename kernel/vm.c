@@ -3,6 +3,7 @@
 #include "paging.h"
 #include "process.h"
 #include "string.h"
+#include "syscall.h"
 #include <stdint.h>
 
 static uint32_t page_align_down(uint32_t value) {
@@ -29,6 +30,33 @@ static enum vm_fault_result demand_map_heap_page(struct process *proc,
 
     memset((void *)page, 0, VM_PAGE_SIZE);
     return VM_FAULT_HANDLED;
+}
+
+enum vm_fault_result vm_prepare_user_write_page(struct process *proc,
+                                                uint32_t page) {
+    uint32_t flags;
+
+    if (!proc || !proc->cr3 || (page & (VM_PAGE_SIZE - 1)) != 0 ||
+        page < USER_SPACE_START || page >= USER_SPACE_END ||
+        is_stack_guard_fault(page)) {
+        return VM_FAULT_FATAL;
+    }
+
+    flags = paging_get_page_flags_in_directory(proc->cr3, page);
+    if ((flags & (PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE)) ==
+        (PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE)) {
+        return VM_FAULT_HANDLED;
+    }
+    if ((flags & (PAGE_PRESENT | PAGE_USER | PAGE_COW)) ==
+        (PAGE_PRESENT | PAGE_USER | PAGE_COW)) {
+        return paging_resolve_cow_fault(proc->cr3, page) ?
+            VM_FAULT_HANDLED : VM_FAULT_OOM;
+    }
+    if ((flags & PAGE_PRESENT) == 0 &&
+        page >= proc->heap_start && page < proc->heap_end) {
+        return demand_map_heap_page(proc, page);
+    }
+    return VM_FAULT_FATAL;
 }
 
 enum vm_fault_result vm_handle_page_fault(struct process *proc,

@@ -219,6 +219,33 @@ uint32_t paging_get_page_flags_in_directory(uint32_t cr3,
     return page_table[table_index] & 0xFFF;
 }
 
+int paging_set_page_flags_in_directory(uint32_t cr3, uint32_t virtual_addr,
+                                       uint32_t flags) {
+    uint32_t *directory = (uint32_t *)(cr3 & 0xFFFFF000);
+    uint32_t dir_index = (virtual_addr >> 22) & 0x3FF;
+    uint32_t table_index = (virtual_addr >> 12) & 0x3FF;
+    uint32_t *table;
+    uint32_t physical;
+
+    if (!cr3 || !(directory[dir_index] & PAGE_PRESENT)) {
+        return 0;
+    }
+    table = (uint32_t *)(directory[dir_index] & 0xFFFFF000);
+    if (!(table[table_index] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    physical = table[table_index] & 0xFFFFF000;
+    table[table_index] = physical | (flags & 0xFFF) | PAGE_PRESENT;
+    if (flags & PAGE_USER) {
+        directory[dir_index] |= PAGE_USER;
+    }
+    if (directory == active_page_directory) {
+        invlpg(virtual_addr);
+    }
+    return 1;
+}
+
 uint32_t paging_get_physical_address(uint32_t virtual_addr) {
     return paging_get_physical_address_in_directory(
         (uint32_t)active_page_directory, virtual_addr);
