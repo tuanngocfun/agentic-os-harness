@@ -1,5 +1,6 @@
 #include "timer.h"
 #include "scheduler.h"
+#include "process.h"
 #include <stdint.h>
 
 #define PIT_CHANNEL0 0x40
@@ -19,7 +20,8 @@ void timer_handler(void) {
 
 uint32_t timer_interrupt(uint32_t interrupted_esp) {
     timer_ticks++;
-    return scheduler_preempt(interrupted_esp);
+    uint32_t next_esp = scheduler_preempt(interrupted_esp);
+    return process_deliver_signals(next_esp);
 }
 
 void timer_init(uint32_t freq) {

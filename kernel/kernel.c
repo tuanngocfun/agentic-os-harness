@@ -405,7 +405,7 @@ static uint32_t address_space_read_test_value(void) {
 
 #if defined(ENABLE_USERMODE_SELFTEST) || defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || \
     defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST) || defined(ENABLE_IPC_SELFTEST)
 extern void enter_user_mode(uint32_t entry_point, uint32_t user_stack_top);
 #endif
 
@@ -434,9 +434,9 @@ static __attribute__((noreturn)) void usermode_selftest_entry(void) {
 
 #if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || \
     defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || \
-    defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
+    defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST) || defined(ENABLE_IPC_SELFTEST)
 static int allow_test_marker_range(struct process *proc, uint32_t first, uint32_t last) {
-    if (!proc || first == 0 || first > last || last > 64) {
+    if (!proc || first == 0 || first > last || last > PROCESS_TEST_MARKER_WORDS * 64) {
         return 0;
     }
     for (uint32_t marker = first; marker <= last; marker++) {
@@ -540,7 +540,7 @@ static __attribute__((noreturn)) void syscall_negative_user_entry(void) {
 #endif
 
 #if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST) || defined(ENABLE_IPC_SELFTEST)
 static uint32_t syscall3(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     asm volatile(
         "int $0x80"
@@ -703,7 +703,7 @@ static __attribute__((noreturn)) void syscall_file_user_entry(void) {
 #endif
 
 #if defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || \
-    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
+    defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST) || defined(ENABLE_IPC_SELFTEST)
 static void map_user_code_span(uint32_t start, uint32_t end) {
     uint32_t first = start & 0xFFFFF000;
     uint32_t last = end & 0xFFFFF000;
@@ -1451,6 +1451,126 @@ static __attribute__((noreturn)) void vm_user_entry(void) {
     syscall_marker(SYSCALL_MARK_VM_DONE);
     while (1) {
     }
+}
+#endif
+
+#ifdef ENABLE_IPC_SELFTEST
+static __attribute__((noreturn)) void ipc_user_entry(void) {
+    uint32_t status = 0;
+    uint32_t child = syscall3(SYS_FORK, 0, 0, 0);
+    if ((int32_t)child < 0) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    if (child == 0) {
+        (void)syscall3(SYS_UPTIME, 0, 0, 0);
+        (void)syscall3(SYS_EXIT, 88, 0, 0);
+        while (1) {}
+    }
+
+    int wait_res = syscall3(SYS_WAITPID, child, (uint32_t)&status, WNOHANG);
+    if (wait_res != 0) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    syscall_marker(SYSCALL_MARK_WAITPID_WNOHANG);
+
+    wait_res = syscall3(SYS_WAITPID, child, (uint32_t)&status, 0);
+    if (wait_res != (int)child || !WIFEXITED(status) || WEXITSTATUS(status) != 88) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    syscall_marker(SYSCALL_MARK_WAITPID_SPECIFIC);
+    syscall_marker(SYSCALL_MARK_WAITPID_STATUS);
+
+    wait_res = syscall3(SYS_WAITPID, 9999, (uint32_t)&status, 0);
+    if (wait_res != (int)SYSCALL_ECHILD) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    syscall_marker(SYSCALL_MARK_WAITPID_NEGATIVE);
+
+    child = syscall3(SYS_FORK, 0, 0, 0);
+    if ((int32_t)child < 0) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    if (child == 0) {
+        while (1) {
+            (void)syscall3(SYS_UPTIME, 0, 0, 0);
+        }
+    }
+
+    (void)syscall3(SYS_UPTIME, 0, 0, 0);
+    int kill_res = syscall3(SYS_KILL, child, SIGTERM, 0);
+    if (kill_res != SYSCALL_SUCCESS) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+
+    status = 0;
+    wait_res = syscall3(SYS_WAITPID, child, (uint32_t)&status, 0);
+    if (wait_res != (int)child || !WIFSIGNALED(status) || WTERMSIG(status) != SIGTERM) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    syscall_marker(SYSCALL_MARK_SIGNAL_KILL);
+
+    if (syscall3(SYS_KILL, 9999, SIGTERM, 0) != SYSCALL_ESRCH ||
+        syscall3(SYS_KILL, syscall3(SYS_GETPID, 0, 0, 0), 99, 0) != SYSCALL_EINVAL) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    syscall_marker(SYSCALL_MARK_SIGNAL_IGN);
+
+    int read_fd = -1;
+    int write_fd = -1;
+    int pipe_res = syscall3(SYS_PIPE, (uint32_t)&read_fd, (uint32_t)&write_fd, 0);
+    if (pipe_res != SYSCALL_SUCCESS || read_fd < 0 || write_fd < 0) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    syscall_marker(SYSCALL_MARK_PIPE_CREATE);
+
+    child = syscall3(SYS_FORK, 0, 0, 0);
+    if ((int32_t)child < 0) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    if (child == 0) {
+        char buf[5] = "ping";
+        int written = syscall3(SYS_WRITE, write_fd, (uint32_t)buf, 4);
+        if (written != 4) {
+            (void)syscall3(SYS_EXIT, 99, 0, 0);
+        }
+        (void)syscall3(SYS_CLOSE, write_fd, 0, 0);
+        (void)syscall3(SYS_CLOSE, read_fd, 0, 0);
+        (void)syscall3(SYS_EXIT, 0, 0, 0);
+    }
+
+    (void)syscall3(SYS_CLOSE, write_fd, 0, 0);
+
+    char read_buf[8];
+    int nread = syscall3(SYS_READ, read_fd, (uint32_t)read_buf, 4);
+    if (nread != 4 || read_buf[0] != 'p' || read_buf[1] != 'i' || read_buf[2] != 'n' || read_buf[3] != 'g') {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    syscall_marker(SYSCALL_MARK_PIPE_IO);
+
+    (void)syscall3(SYS_WAITPID, child, (uint32_t)&status, 0);
+    nread = syscall3(SYS_READ, read_fd, (uint32_t)read_buf, 4);
+    if (nread != 0) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    syscall_marker(SYSCALL_MARK_PIPE_EOF);
+
+    (void)syscall3(SYS_CLOSE, read_fd, 0, 0);
+    (void)syscall3(SYS_CLOSE, write_fd, 0, 0);
+
+    syscall_marker(SYSCALL_MARK_IPC_DONE);
+    while (1) {}
 }
 #endif
 
@@ -3347,6 +3467,52 @@ void kernel_main(void) {
 
         while (1) {
             asm volatile("hlt");
+        }
+    }
+#endif
+
+#ifdef ENABLE_IPC_SELFTEST
+    {
+        uint32_t kernel_cr3 = paging_get_current_directory();
+        uint32_t proc_cr3;
+        uint32_t stack_phys;
+        int ready = 0;
+
+        serial_puts("IPC_TEST\n");
+
+        process_init();
+        scheduler_init();
+        struct process *user_proc =
+            process_create((uint32_t)ipc_user_entry, 1);
+        proc_cr3 = paging_create_address_space();
+        stack_phys = frame_alloc();
+
+        if (user_proc && proc_cr3 && stack_phys &&
+            allow_test_marker_range(user_proc, SYSCALL_MARK_WAITPID_WNOHANG,
+                                    SYSCALL_MARK_IPC_FAIL)) {
+            process_set_address_space(user_proc, proc_cr3);
+            paging_switch_directory(proc_cr3);
+            map_user_code_span((uint32_t)syscall_marker,
+                               (uint32_t)ipc_user_entry);
+            if (paging_map_page_in_directory(proc_cr3, USER_STACK_BOTTOM,
+                                             stack_phys,
+                                             PAGE_PRESENT | PAGE_WRITABLE |
+                                                 PAGE_USER)) {
+                memset((void *)USER_STACK_BOTTOM, 0, USER_STACK_SIZE);
+                ready = paging_is_user_accessible(USER_STACK_BOTTOM);
+            }
+            paging_switch_directory(kernel_cr3);
+        }
+
+        if (ready) {
+            scheduler_set_current(user_proc);
+            serial_puts("IPC_USER_READY\n");
+            enter_user_mode((uint32_t)ipc_user_entry, USER_STACK_TOP);
+        }
+
+        serial_puts("IPC_FAIL\n");
+        while (1) {
+            asm volatile("cli; hlt");
         }
     }
 #endif

@@ -27,7 +27,27 @@ uint32_t syscall_dispatch(uint32_t frame_esp);
 #define SYS_FORK    17
 #define SYS_EXEC    18
 #define SYS_BRK     19
-#define SYS_MAX     19
+#define SYS_WAITPID 20
+#define SYS_KILL    21
+#define SYS_SIGPENDING 22
+#define SYS_PIPE    23
+#define SYS_MAX     23
+
+/* waitpid options */
+#define WNOHANG     0x0001u
+
+/* Wait status encoding (POSIX-like) */
+#define W_EXITCODE(code, sig)  (((code) & 0xFF) << 8 | ((sig) & 0x7F))
+#define WIFEXITED(status)      (((status) & 0x7F) == 0)
+#define WEXITSTATUS(status)    (((status) >> 8) & 0xFF)
+#define WIFSIGNALED(status)    (((status) & 0x7F) != 0)
+#define WTERMSIG(status)       ((status) & 0x7F)
+
+/* Signal numbers */
+#define SIGKILL   9
+#define SIGTERM  15
+#define SIGCHLD  17
+#define NSIG     32
 
 #define SYS_O_RDONLY 0x0001
 #define SYS_O_WRONLY 0x0002
@@ -59,6 +79,9 @@ struct syscall_file_stat {
 #define SYSCALL_ENOMEM      ((uint32_t)-12) // Out of memory
 #define SYSCALL_EAGAIN      ((uint32_t)-13) // Resource temporarily unavailable
 #define SYSCALL_E2BIG       ((uint32_t)-14) // Argument or environment vector too large
+#define SYSCALL_EPIPE       ((uint32_t)-15) // Broken pipe
+#define SYSCALL_ESRCH       ((uint32_t)-16) // No such process
+#define SYSCALL_EINTR       ((uint32_t)-17) // Interrupted by signal
 
 // User-space address range (0x40000000 - 0xBFFFFFFF)
 #define USER_SPACE_START    0x40000000
@@ -125,5 +148,18 @@ struct syscall_file_stat {
 #define SYSCALL_MARK_VM_GUARD_TERMINATION 54
 #define SYSCALL_MARK_VM_DONE 55
 #define SYSCALL_MARK_VM_FAIL 56
+#define SYSCALL_MARK_WAITPID_WNOHANG 57
+#define SYSCALL_MARK_WAITPID_SPECIFIC 58
+#define SYSCALL_MARK_WAITPID_STATUS 59
+#define SYSCALL_MARK_WAITPID_NEGATIVE 60
+#define SYSCALL_MARK_WAITPID_DONE 61
+#define SYSCALL_MARK_WAITPID_FAIL 62
+#define SYSCALL_MARK_SIGNAL_KILL 63
+#define SYSCALL_MARK_SIGNAL_IGN 64
+#define SYSCALL_MARK_PIPE_CREATE 65
+#define SYSCALL_MARK_PIPE_IO 66
+#define SYSCALL_MARK_PIPE_EOF 67
+#define SYSCALL_MARK_IPC_DONE 68
+#define SYSCALL_MARK_IPC_FAIL 69
 
 #endif

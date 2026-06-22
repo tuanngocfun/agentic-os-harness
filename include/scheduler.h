@@ -18,6 +18,8 @@ void scheduler_set_priority(struct process *proc, uint32_t priority);
 uint32_t scheduler_get_count(void);
 struct process *scheduler_get_current(void);
 void scheduler_set_current(struct process *proc);
+void scheduler_wake(struct process *proc);
+void scheduler_remove(struct process *proc);
 void yield(void);
 
 #endif

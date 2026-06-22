@@ -261,6 +261,46 @@ void scheduler_set_current(struct process *proc) {
     irq_restore(flags);
 }
 
+void scheduler_remove(struct process *proc) {
+    uint32_t flags;
+    struct process *prev = NULL;
+    struct process *item;
+
+    if (!proc) {
+        return;
+    }
+    flags = irq_save();
+    item = ready_queue;
+    while (item) {
+        if (item == proc) {
+            if (prev) {
+                prev->next = item->next;
+            } else {
+                ready_queue = item->next;
+            }
+            item->next = NULL;
+            break;
+        }
+        prev = item;
+        item = item->next;
+    }
+    irq_restore(flags);
+}
+
+void scheduler_wake(struct process *proc) {
+    uint32_t flags;
+
+    if (!proc) {
+        return;
+    }
+    flags = irq_save();
+    if (proc->state == PROCESS_BLOCKED) {
+        proc->state = PROCESS_READY;
+        enqueue(proc);
+    }
+    irq_restore(flags);
+}
+
 void yield(void) {
     if (!scheduler_initialized) return;
 

@@ -12,7 +12,10 @@
 #include "allocator.h"
 #include "interrupt_frame.h"
 #include "string.h"
+#include "pipe.h"
+#include "uaccess.h"
 #include <stdint.h>
+
 
 void syscall_init(void) {
     extern void isr_stub_128(void);
@@ -32,49 +35,15 @@ struct syscall_dispatch_control {
 static uint32_t vm_test_free_after_demand;
 #endif
 
-static int is_user_range_valid(uint32_t ptr, uint32_t size) {
-    if (ptr < USER_SPACE_START) return 0;
-    if (ptr >= USER_SPACE_END) return 0;
-    if (size > 0 && (ptr + size) > USER_SPACE_END) return 0;
-    if (size > 0 && (ptr + size) < ptr) return 0;  // Overflow check
-    return 1;
-}
 
 static int is_user_pointer_valid(uint32_t ptr, uint32_t size) {
-    if (!is_user_range_valid(ptr, size)) return 0;
-
-    // Check EVERY page in the range, not just first and last
-    uint32_t start_page = ptr & ~0xFFF;
-    uint32_t end_addr = ptr + (size > 0 ? size - 1 : 0);
-    uint32_t end_page = end_addr & ~0xFFF;
-
-    for (uint32_t page = start_page; page <= end_page; page += 0x1000) {
-        if (!paging_is_mapped(page)) {
-            return 0;
-        }
-        if (!paging_is_user_accessible(page)) {
-            return 0;
-        }
-    }
-
-    return 1;
+    return uaccess_readable(ptr, size);
 }
 
 static int is_user_pointer_writable(uint32_t ptr, uint32_t size) {
-    if (!is_user_range_valid(ptr, size)) return 0;
-
-    uint32_t start_page = ptr & ~0xFFF;
-    uint32_t end_addr = ptr + (size > 0 ? size - 1 : 0);
-    uint32_t end_page = end_addr & ~0xFFF;
-
-    for (uint32_t page = start_page; page <= end_page; page += 0x1000) {
-        if (!paging_is_user_writable(page)) {
-            return 0;
-        }
-    }
-
-    return 1;
+    return uaccess_prepare_write(ptr, size) == UACCESS_SUCCESS;
 }
+
 
 static uint32_t syscall_from_vfs_status(int status) {
     switch (status) {
@@ -100,22 +69,8 @@ static uint32_t syscall_from_vfs_status(int status) {
 }
 
 static int syscall_copy_user_string(char *dest, uint32_t user_ptr, uint32_t max_len) {
-    if (!dest || max_len == 0) {
-        return VFS_EINVAL;
-    }
-
-    for (uint32_t i = 0; i < max_len; i++) {
-        if (!is_user_pointer_valid(user_ptr + i, 1)) {
-            return VFS_EINVAL;
-        }
-        dest[i] = *((const char *)(user_ptr + i));
-        if (dest[i] == '\0') {
-            return VFS_SUCCESS;
-        }
-    }
-
-    dest[max_len - 1] = '\0';
-    return VFS_EINVAL;
+    return copy_string_from_user(dest, user_ptr, max_len) == UACCESS_SUCCESS ?
+        VFS_SUCCESS : VFS_EINVAL;
 }
 
 struct exec_vectors {
@@ -144,10 +99,10 @@ static uint32_t exec_copy_vector(struct exec_vectors *vectors,
         uint32_t string_ptr;
         int terminated = 0;
 
-        if (!is_user_pointer_valid(slot, sizeof(uint32_t))) {
+        if (copy_from_user(&string_ptr, slot, sizeof(string_ptr)) !=
+            UACCESS_SUCCESS) {
             return SYSCALL_EFAULT;
         }
-        string_ptr = *((const uint32_t *)slot);
         if (string_ptr == 0) {
             *count = index;
             return SYSCALL_SUCCESS;
@@ -160,14 +115,14 @@ static uint32_t exec_copy_vector(struct exec_vectors *vectors,
         for (uint32_t length = 0; length < EXEC_MAX_STRING_BYTES; length++) {
             char value;
 
-            if (!is_user_pointer_valid(string_ptr + length, 1)) {
-                return SYSCALL_EFAULT;
-            }
             if (vectors->bytes_used >= EXEC_MAX_VECTOR_BYTES) {
                 return SYSCALL_E2BIG;
             }
 
-            value = *((const char *)(string_ptr + length));
+            if (copy_from_user(&value, string_ptr + length, 1) !=
+                UACCESS_SUCCESS) {
+                return SYSCALL_EFAULT;
+            }
             vectors->data[vectors->bytes_used++] = value;
             if (value == '\0') {
                 terminated = 1;
@@ -271,8 +226,6 @@ static uint32_t syscall_exec(uint32_t path_ptr,
     uint32_t new_cr3;
     uint32_t stack_page = USER_STACK_TOP - USER_STACK_SIZE;
     uint32_t stack_phys;
-    uint32_t mapped_stack_phys;
-    uint32_t old_cr3;
     uint32_t old_process_cr3;
     uint32_t new_stack_pointer;
     uint32_t status;
@@ -333,17 +286,11 @@ static uint32_t syscall_exec(uint32_t path_ptr,
         kfree(vectors);
         return SYSCALL_ENOMEM;
     }
-    paging_map_page_in_directory(new_cr3,
-                                 stack_page,
-                                 stack_phys,
-                                 PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
-
-    old_cr3 = paging_get_current_directory();
-    paging_switch_directory(new_cr3);
-    mapped_stack_phys = paging_get_physical_address(stack_page) & 0xFFFFF000;
-    paging_switch_directory(old_cr3);
-    if (mapped_stack_phys != stack_phys) {
-        frame_free(stack_phys);
+    if (paging_get_physical_address_in_directory(new_cr3, stack_page) != 0 ||
+        !paging_map_page_in_directory(new_cr3, stack_page, stack_phys,
+                                      PAGE_PRESENT | PAGE_WRITABLE |
+                                      PAGE_USER)) {
+        frame_release(stack_phys);
         paging_destroy_address_space(new_cr3);
         kfree(vectors);
         return SYSCALL_EIO;
@@ -443,58 +390,98 @@ static uint32_t syscall_open(uint32_t path_ptr, uint32_t flags, uint32_t caller_
     return (uint32_t)fd;
 }
 
-static uint32_t syscall_read(uint32_t fd, uint32_t buffer_ptr, uint32_t count, uint32_t caller_cs) {
-    int status;
-    int handle;
+static uint32_t syscall_read(uint32_t fd, uint32_t buffer_ptr,
+                             uint32_t count, uint32_t caller_cs,
+                             struct syscall_dispatch_control *control) {
+    enum process_fd_kind kind;
     struct process *current;
+    int handle;
+    int status;
 
     if (!is_ring3(caller_cs)) {
         return SYSCALL_EPERM;
     }
-
-    if (count > 0 && !is_user_pointer_writable(buffer_ptr, count)) {
+    if (count > 0 && uaccess_prepare_write(buffer_ptr, count) !=
+            UACCESS_SUCCESS) {
         return SYSCALL_EFAULT;
     }
-
     current = process_get_current();
-    handle = process_fd_resolve(current, (int)fd);
-    if (handle < 0) {
+    if (process_fd_get(current, (int)fd, &kind, &handle) != VFS_SUCCESS) {
         return SYSCALL_EBADF;
     }
-
-    status = vfs_read(handle, (void *)buffer_ptr, count);
-    if (status < 0) {
-        return syscall_from_vfs_status(status);
+    if (kind == PROCESS_FD_VFS) {
+        status = vfs_read(handle, (void *)buffer_ptr, count);
+        return status < 0 ? syscall_from_vfs_status(status) :
+                            (uint32_t)status;
     }
-
-    return (uint32_t)status;
+    if (kind != PROCESS_FD_PIPE_READ) {
+        return SYSCALL_EBADF;
+    }
+    status = pipe_read(handle, (void *)buffer_ptr, count);
+    if (status != PIPE_WOULD_BLOCK) {
+        return status < 0 ? SYSCALL_EBADF : (uint32_t)status;
+    }
+    if (!control || !control->frame) {
+        return SYSCALL_EAGAIN;
+    }
+    process_begin_pipe_wait(current, BLOCK_PIPE_READ, (int)fd,
+                            buffer_ptr, count);
+    uint32_t resume_esp = scheduler_block_current((uint32_t)control->frame);
+    if (resume_esp == (uint32_t)control->frame) {
+        current->block_reason = BLOCK_NONE;
+        return SYSCALL_EAGAIN;
+    }
+    control->switch_requested = 1;
+    control->resume_esp = resume_esp;
+    return SYSCALL_SUCCESS;
 }
 
-static uint32_t syscall_write(uint32_t fd, uint32_t buffer_ptr, uint32_t count, uint32_t caller_cs) {
-    int status;
-    int handle;
+static uint32_t syscall_write(uint32_t fd, uint32_t buffer_ptr,
+                              uint32_t count, uint32_t caller_cs,
+                              struct syscall_dispatch_control *control) {
+    enum process_fd_kind kind;
     struct process *current;
+    int handle;
+    int status;
 
     if (!is_ring3(caller_cs)) {
         return SYSCALL_EPERM;
     }
-
-    if (count > 0 && !is_user_pointer_valid(buffer_ptr, count)) {
+    if (count > 0 && !uaccess_readable(buffer_ptr, count)) {
         return SYSCALL_EFAULT;
     }
-
     current = process_get_current();
-    handle = process_fd_resolve(current, (int)fd);
-    if (handle < 0) {
+    if (process_fd_get(current, (int)fd, &kind, &handle) != VFS_SUCCESS) {
         return SYSCALL_EBADF;
     }
-
-    status = vfs_write(handle, (const void *)buffer_ptr, count);
-    if (status < 0) {
-        return syscall_from_vfs_status(status);
+    if (kind == PROCESS_FD_VFS) {
+        status = vfs_write(handle, (const void *)buffer_ptr, count);
+        return status < 0 ? syscall_from_vfs_status(status) :
+                            (uint32_t)status;
     }
-
-    return (uint32_t)status;
+    if (kind != PROCESS_FD_PIPE_WRITE) {
+        return SYSCALL_EBADF;
+    }
+    status = pipe_write(handle, (const void *)buffer_ptr, count);
+    if (status == PIPE_BROKEN) {
+        return SYSCALL_EPIPE;
+    }
+    if (status != PIPE_WOULD_BLOCK) {
+        return status < 0 ? SYSCALL_EBADF : (uint32_t)status;
+    }
+    if (!control || !control->frame) {
+        return SYSCALL_EAGAIN;
+    }
+    process_begin_pipe_wait(current, BLOCK_PIPE_WRITE, (int)fd,
+                            buffer_ptr, count);
+    uint32_t resume_esp = scheduler_block_current((uint32_t)control->frame);
+    if (resume_esp == (uint32_t)control->frame) {
+        current->block_reason = BLOCK_NONE;
+        return SYSCALL_EAGAIN;
+    }
+    control->switch_requested = 1;
+    control->resume_esp = resume_esp;
+    return SYSCALL_SUCCESS;
 }
 
 static uint32_t syscall_close(uint32_t fd, uint32_t caller_cs) {
@@ -532,10 +519,15 @@ static uint32_t syscall_stat(uint32_t path_ptr, uint32_t stat_ptr, uint32_t call
         return syscall_from_vfs_status(status);
     }
 
-    user_stat->size = stat.size;
-    user_stat->start_sector = stat.start_sector;
-    user_stat->allocated_sectors = stat.allocated_sectors;
-    user_stat->flags = stat.flags;
+    struct syscall_file_stat result = {
+        stat.size,
+        stat.start_sector,
+        stat.allocated_sectors,
+        stat.flags
+    };
+    if (copy_to_user(stat_ptr, &result, sizeof(result)) != UACCESS_SUCCESS) {
+        return SYSCALL_EFAULT;
+    }
     return SYSCALL_SUCCESS;
 }
 
@@ -633,7 +625,7 @@ static uint32_t syscall_handle(uint32_t syscall_num,
 
 #endif
 
-#if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST)
+#if defined(ENABLE_SYSCALL_NEGATIVE_SELFTEST) || defined(ENABLE_SYSCALL_FILE_SELFTEST) || defined(ENABLE_PROCESS_SYSCALL_SELFTEST) || defined(ENABLE_PROCESS_LIFECYCLE_SELFTEST) || defined(ENABLE_REDTEAM_SELFTEST) || defined(ENABLE_EXEC_ARGS_SELFTEST) || defined(ENABLE_VM_SELFTEST) || defined(ENABLE_IPC_SELFTEST)
         case SYS_TEST_MARKER: {
             struct process *current = process_get_current();
             if (!is_ring3(caller_cs) ||
@@ -875,6 +867,41 @@ static uint32_t syscall_handle(uint32_t syscall_num,
                     serial_puts("RED_TEAM_FAIL\n");
                     break;
 #endif
+#ifdef ENABLE_IPC_SELFTEST
+                case SYSCALL_MARK_WAITPID_WNOHANG:
+                    serial_puts("WAITPID_WNOHANG_OK\n");
+                    break;
+                case SYSCALL_MARK_WAITPID_SPECIFIC:
+                    serial_puts("WAITPID_SPECIFIC_OK\n");
+                    break;
+                case SYSCALL_MARK_WAITPID_STATUS:
+                    serial_puts("WAITPID_STATUS_OK\n");
+                    break;
+                case SYSCALL_MARK_WAITPID_NEGATIVE:
+                    serial_puts("WAITPID_NEGATIVE_OK\n");
+                    break;
+                case SYSCALL_MARK_SIGNAL_KILL:
+                    serial_puts("SIGNAL_KILL_OK\n");
+                    break;
+                case SYSCALL_MARK_SIGNAL_IGN:
+                    serial_puts("SIGNAL_IGN_OK\n");
+                    break;
+                case SYSCALL_MARK_PIPE_CREATE:
+                    serial_puts("PIPE_CREATE_OK\n");
+                    break;
+                case SYSCALL_MARK_PIPE_IO:
+                    serial_puts("PIPE_IO_OK\n");
+                    break;
+                case SYSCALL_MARK_PIPE_EOF:
+                    serial_puts("PIPE_EOF_OK\n");
+                    break;
+                case SYSCALL_MARK_IPC_DONE:
+                    serial_puts("IPC_OK\n");
+                    break;
+                case SYSCALL_MARK_IPC_FAIL:
+                    serial_puts("IPC_FAIL\n");
+                    break;
+#endif
                 default:
                     return SYSCALL_EINVAL;
             }
@@ -886,10 +913,10 @@ static uint32_t syscall_handle(uint32_t syscall_num,
             return syscall_open(arg1, arg2, caller_cs);
 
         case SYS_READ:
-            return syscall_read(arg1, arg2, arg3, caller_cs);
+            return syscall_read(arg1, arg2, arg3, caller_cs, control);
 
         case SYS_WRITE:
-            return syscall_write(arg1, arg2, arg3, caller_cs);
+            return syscall_write(arg1, arg2, arg3, caller_cs, control);
 
         case SYS_CLOSE:
             return syscall_close(arg1, caller_cs);
@@ -1041,6 +1068,177 @@ static uint32_t syscall_handle(uint32_t syscall_num,
             return requested_brk;
         }
 
+        case SYS_WAITPID: {
+            /* SYS_WAITPID(pid, status_ptr, options)
+             * arg1 = target PID (-1 = any child, >0 = specific child)
+             * arg2 = user pointer to uint32_t status (or 0 to skip)
+             * arg3 = options (WNOHANG)
+             */
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
+
+            struct process *current = process_get_current();
+            if (!current) {
+                return SYSCALL_EINVAL;
+            }
+
+            uint32_t target_pid = arg1;
+            uint32_t options = arg3;
+
+            /* Validate options: only WNOHANG is supported */
+            if (options & ~WNOHANG) {
+                return SYSCALL_EINVAL;
+            }
+
+            if (arg2 && !is_user_pointer_writable(arg2, sizeof(uint32_t))) {
+                return SYSCALL_EFAULT;
+            }
+
+            /* Try to find an already-exited child matching the target */
+            struct process *child = process_find_exited_child_by_pid(
+                current->pid, target_pid);
+            if (child) {
+                uint32_t encoded_status;
+                if (child->killed_by_signal) {
+                    encoded_status = W_EXITCODE(0, child->killed_by_signal);
+                } else {
+                    encoded_status = W_EXITCODE(child->exit_code, 0);
+                }
+                if (arg2) {
+                    *((uint32_t *)arg2) = encoded_status;
+                }
+                child->waited = 1;
+                uint32_t child_pid = child->pid;
+                process_destroy(child);
+                return child_pid;
+            }
+
+            /* Check if the target child exists at all */
+            if (target_pid != (uint32_t)-1) {
+                struct process *target = process_get_by_pid(target_pid);
+                if (!target || target->parent_pid != current->pid) {
+                    return SYSCALL_ECHILD;
+                }
+            } else if (!process_has_child(current->pid)) {
+                return SYSCALL_ECHILD;
+            }
+
+            /* WNOHANG: return 0 immediately if no child has exited */
+            if (options & WNOHANG) {
+                return 0;
+            }
+
+            /* Block until a matching child exits */
+            if (!control || !control->frame) {
+                return SYSCALL_EAGAIN;
+            }
+
+            process_begin_waitpid(current, arg2, target_pid);
+            current->wait_is_waitpid = 1;
+            uint32_t resume_esp =
+                scheduler_block_current((uint32_t)control->frame);
+            if (resume_esp == (uint32_t)control->frame) {
+                process_cancel_wait(current);
+                return SYSCALL_EAGAIN;
+            }
+
+            control->switch_requested = 1;
+            control->resume_esp = resume_esp;
+            return SYSCALL_SUCCESS;
+        }
+
+        case SYS_PIPE: {
+            /* SYS_PIPE(read_fd_out, write_fd_out)
+             * arg1 = user pointer to uint32_t (read end)
+             * arg2 = user pointer to uint32_t (write end)
+             */
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
+
+            struct process *current = process_get_current();
+            if (!current) {
+                return SYSCALL_EINVAL;
+            }
+
+            if (!arg1 || !is_user_pointer_writable(arg1, sizeof(uint32_t)) ||
+                !arg2 || !is_user_pointer_writable(arg2, sizeof(uint32_t))) {
+                return SYSCALL_EFAULT;
+            }
+
+            int read_handle, write_handle;
+            if (pipe_create(&read_handle, &write_handle) != 0) {
+                return SYSCALL_EMFILE;
+            }
+
+            int read_fd = process_fd_install_typed(current,
+                PROCESS_FD_PIPE_READ, read_handle, 0);
+            if (read_fd < 0) {
+                pipe_close(read_handle);
+                pipe_close(write_handle);
+                return SYSCALL_EMFILE;
+            }
+
+            int write_fd = process_fd_install_typed(current,
+                PROCESS_FD_PIPE_WRITE, write_handle, 0);
+            if (write_fd < 0) {
+                process_fd_close(current, read_fd);
+                pipe_close(write_handle);
+                return SYSCALL_EMFILE;
+            }
+
+            uint32_t r_fd = (uint32_t)read_fd;
+            uint32_t w_fd = (uint32_t)write_fd;
+            if (copy_to_user(arg1, &r_fd, sizeof(uint32_t)) != UACCESS_SUCCESS ||
+                copy_to_user(arg2, &w_fd, sizeof(uint32_t)) != UACCESS_SUCCESS) {
+                process_fd_close(current, read_fd);
+                process_fd_close(current, write_fd);
+                return SYSCALL_EFAULT;
+            }
+            return SYSCALL_SUCCESS;
+        }
+
+        case SYS_KILL: {
+            /* SYS_KILL(pid, signum)
+             * arg1 = target process PID
+             * arg2 = signal number
+             */
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
+
+            struct process *target = process_get_by_pid(arg1);
+            if (!target) {
+                return SYSCALL_ESRCH;
+            }
+
+            if (arg2 == 0 || arg2 >= NSIG) {
+                return SYSCALL_EINVAL;
+            }
+
+            if (process_send_signal(target, arg2) != 0) {
+                return SYSCALL_ESRCH;
+            }
+            return SYSCALL_SUCCESS;
+        }
+
+        case SYS_SIGPENDING: {
+            /* SYS_SIGPENDING()
+             * Returns bitmask of pending signals for the current process.
+             */
+            if (!is_ring3(caller_cs)) {
+                return SYSCALL_EPERM;
+            }
+
+            struct process *current = process_get_current();
+            if (!current) {
+                return SYSCALL_EINVAL;
+            }
+
+            return current->pending_signals;
+        }
+
         default:
             return SYSCALL_ENOSYS;
     }
@@ -1085,7 +1283,7 @@ uint32_t syscall_dispatch(uint32_t frame_esp) {
     frame->eax = result;
 
     if (control.switch_requested) {
-        return control.resume_esp;
+        return process_deliver_signals(control.resume_esp);
     }
-    return frame_esp;
+    return process_deliver_signals(frame_esp);
 }

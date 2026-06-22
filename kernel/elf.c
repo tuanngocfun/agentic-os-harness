@@ -15,6 +15,7 @@
 #define ELF_TYPE_EXEC 2
 #define ELF_MACHINE_386 3
 #define ELF_PT_LOAD 1
+#define ELF_PF_W 0x02u
 
 struct elf32_header {
     uint8_t ident[16];
@@ -207,7 +208,16 @@ static int map_segment_pages(uint32_t vaddr, uint32_t memsz) {
             }
             return ELF_ENOSPC;
         }
-        paging_map_page(page, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+        if (!paging_map_page_in_directory(paging_get_current_directory(), page,
+                                          phys, PAGE_PRESENT | PAGE_WRITABLE |
+                                                    PAGE_USER)) {
+            frame_release(phys);
+            for (uint32_t i = 0; i < mapped_count; i++) {
+                paging_unmap_page(mapped_pages[i]);
+                frame_release(mapped_phys[i]);
+            }
+            return ELF_ENOSPC;
+        }
         if (!paging_is_user_writable(page)) {
             frame_free(phys);
             for (uint32_t i = 0; i < mapped_count; i++) {
@@ -222,6 +232,24 @@ static int map_segment_pages(uint32_t vaddr, uint32_t memsz) {
         mapped_count++;
     }
 
+    return ELF_SUCCESS;
+}
+
+static int protect_segment_pages(uint32_t vaddr, uint32_t memsz,
+                                 uint32_t elf_flags) {
+    uint32_t start = align_down(vaddr);
+    uint32_t end = align_up(vaddr + memsz);
+    uint32_t flags = PAGE_PRESENT | PAGE_USER;
+
+    if (elf_flags & ELF_PF_W) {
+        flags |= PAGE_WRITABLE;
+    }
+    for (uint32_t page = start; page < end; page += FRAME_SIZE) {
+        if (!paging_set_page_flags_in_directory(
+                paging_get_current_directory(), page, flags)) {
+            return ELF_EIO;
+        }
+    }
     return ELF_SUCCESS;
 }
 
@@ -310,6 +338,10 @@ int elf_load_from_vfs(const char *path, struct elf_load_info *out) {
 
         memset((void *)ph->vaddr, 0, ph->memsz);
         memcpy((void *)ph->vaddr, elf_file_buffer + ph->offset, ph->filesz);
+        status = protect_segment_pages(ph->vaddr, ph->memsz, ph->flags);
+        if (status != ELF_SUCCESS) {
+            return status;
+        }
         loaded_bytes += ph->filesz;
     }
 

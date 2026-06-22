@@ -13,7 +13,8 @@
 #define ELF_MAX_IMAGE_SIZE 8192
 #define ELF_MAX_LOAD_MEMORY_SIZE 65536
 #define ELF_USER_LOAD_MIN 0x40000000u
-#define ELF_USER_LOAD_MAX 0xB0000000u
+/* Executable mappings stop before the reserved lazy heap and stack. */
+#define ELF_USER_LOAD_MAX 0x90000000u
 
 struct elf_load_info {
     uint32_t entry;
