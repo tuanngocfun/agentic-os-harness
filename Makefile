@@ -44,12 +44,14 @@ SHELL_OBJ = $(BUILD_DIR)/shell.o
 GDT_OBJ = $(BUILD_DIR)/gdt.o
 PAGING_OBJ = $(BUILD_DIR)/paging.o
 VM_OBJ = $(BUILD_DIR)/vm.o
+UACCESS_OBJ = $(BUILD_DIR)/uaccess.o
 TSS_OBJ = $(BUILD_DIR)/tss.o
 SYSCALL_OBJ = $(BUILD_DIR)/syscall.o
 PROCESS_OBJ = $(BUILD_DIR)/process.o
 SCHEDULER_OBJ = $(BUILD_DIR)/scheduler.o
 USERMODE_OBJ = $(BUILD_DIR)/usermode.o
-KERNEL_OBJECTS = $(KERNEL_ENTRY_OBJ) $(ISR_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) $(STRING_OBJ) $(IDT_OBJ) $(KEYBOARD_OBJ) $(TIMER_OBJ) $(E820_OBJ) $(MEMORY_OBJ) $(FRAME_OBJ) $(ALLOCATOR_OBJ) $(RAMDISK_OBJ) $(SIMPLEFS_OBJ) $(VFS_OBJ) $(ELF_OBJ) $(GDT_OBJ) $(PAGING_OBJ) $(VM_OBJ) $(TSS_OBJ) $(SYSCALL_OBJ) $(PROCESS_OBJ) $(SCHEDULER_OBJ) $(USERMODE_OBJ) $(SHELL_OBJ)
+PIPE_OBJ = $(BUILD_DIR)/pipe.o
+KERNEL_OBJECTS = $(KERNEL_ENTRY_OBJ) $(ISR_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) $(STRING_OBJ) $(IDT_OBJ) $(KEYBOARD_OBJ) $(TIMER_OBJ) $(E820_OBJ) $(MEMORY_OBJ) $(FRAME_OBJ) $(ALLOCATOR_OBJ) $(RAMDISK_OBJ) $(SIMPLEFS_OBJ) $(VFS_OBJ) $(ELF_OBJ) $(GDT_OBJ) $(PAGING_OBJ) $(VM_OBJ) $(UACCESS_OBJ) $(TSS_OBJ) $(SYSCALL_OBJ) $(PROCESS_OBJ) $(SCHEDULER_OBJ) $(USERMODE_OBJ) $(PIPE_OBJ) $(SHELL_OBJ)
 KERNEL_ELF = $(BUILD_DIR)/kernel.elf
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 KERNEL_DEFINES_STAMP = $(BUILD_DIR)/kernel_defines.stamp
@@ -187,6 +189,10 @@ $(VM_OBJ): $(KERNEL_DIR)/vm.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
+$(UACCESS_OBJ): $(KERNEL_DIR)/uaccess.c $(KERNEL_DEFINES_STAMP)
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
 $(TSS_OBJ): $(KERNEL_DIR)/tss.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
@@ -200,6 +206,10 @@ $(PROCESS_OBJ): $(KERNEL_DIR)/process.c $(KERNEL_DEFINES_STAMP)
 	$(CC) $(CFLAGS) $< -o $@
 
 $(SCHEDULER_OBJ): $(KERNEL_DIR)/scheduler.c $(KERNEL_DEFINES_STAMP)
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(PIPE_OBJ): $(KERNEL_DIR)/pipe.c $(KERNEL_DEFINES_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< -o $@
 
@@ -231,7 +241,7 @@ run-serial: $(OS_IMG)
 
 test: test-boot test-shell
 
-test-deep: test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-vm test-shell-io
+test-deep: test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-ramdisk test-vfs test-scheduler-safety test-vm test-ipc test-shell-io
 
 test-boot: $(OS_IMG)
 	@bash scripts/boot_test.sh
@@ -345,6 +355,10 @@ test-vm:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_VM_SELFTEST
 	@bash scripts/vm_test.sh; status=$$?; $(MAKE) -B all; exit $$status
 
+test-ipc:
+	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_IPC_SELFTEST
+	@bash scripts/ipc_test.sh; status=$$?; $(MAKE) -B all; exit $$status
+
 test-red-team:
 	@$(MAKE) -B all KERNEL_DEFINES=-DENABLE_REDTEAM_SELFTEST
 	@bash scripts/red_team_test.sh; status=$$?; $(MAKE) -B all; exit $$status
@@ -373,4 +387,4 @@ clean: guard-paths
 
 FORCE:
 
-.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-vm test-red-team test-blue-team test-static-analysis test-qemu-preflight test-red-team-tooling test-meta-loop test-shell-io clean FORCE
+.PHONY: all guard-paths run run-serial test test-deep test-boot test-shell test-marker-surface test-syscall test-exception test-exception-div0 test-exception-gpf test-exception-pagefault test-scheduler test-paging test-memory test-usermode test-timer test-timer-preemption test-allocator test-address-space test-syscall-negative test-syscall-file test-elf-loader test-process-syscall test-process-lifecycle test-exec-args test-process-fd test-e820-frame test-e820 test-ramdisk test-vfs test-scheduler-safety test-vm test-ipc test-red-team test-blue-team test-static-analysis test-qemu-preflight test-red-team-tooling test-meta-loop test-shell-io clean FORCE
