@@ -10,8 +10,8 @@ scope_limits:
   unproven:
     - "swap"
     - "automatic_stack_growth"
-    - "waitpid_options"
-    - "signals"
+    - "full_posix_signal_handlers_and_masks"
+    - "pipe_nonblocking_select_poll"
     - "smp_safe_scheduling"
     - "persistent_storage"
     - "networking"
@@ -110,6 +110,7 @@ claim_status:
   syscall: "claimable_with_syscall_ring3_negative_and_file_io_tests"
   exception_panic: "claimable_with_exception_test_suite"
   process: "claimable_with_ring3_fork_wait_exit_reap_transactional_exec_argv_envp_and_per_process_fd_tests"
+  ipc: "claimable_with_waitpid_signal_and_pipe_runtime_test"
   scheduler: "claimable_with_scheduler_preemption_priority_fairness_tests"
   user_mode: "claimable_with_usermode_ring3_test"
   block_device: "claimable_with_ramdisk_runtime_test"
@@ -261,13 +262,15 @@ routes:
       - "make test-meta-loop"
       - "check_harness_contract"
 
-mimo_next_tasks:
+completed_mimo_tasks:
   - id: "waitpid-signals-pipes"
-    priority: "P0"
-    success: "Add waitpid options, minimal signal delivery, and pipes only after VM ownership is proven."
+    evidence: "make test-ipc"
+    scope: "WNOHANG and specific-child waitpid, minimal signal delivery, and blocking pipe create/read/write/EOF/broken-write behavior"
+
+mimo_next_tasks:
   - id: "red-blue-fuzz-continuation"
     priority: "P1"
-    success: "Keep expanding guest-only syscall, scheduler, paging, and ELF fuzz probes after each new feature lands."
+    success: "Keep expanding guest-only syscall, scheduler, paging, IPC, and ELF fuzz probes after each new feature lands."
 
 forbidden_next_breadth:
   - "networking"

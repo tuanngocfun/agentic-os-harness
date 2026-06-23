@@ -1106,7 +1106,11 @@ static uint32_t syscall_handle(uint32_t syscall_num,
                     encoded_status = W_EXITCODE(child->exit_code, 0);
                 }
                 if (arg2) {
-                    *((uint32_t *)arg2) = encoded_status;
+                    if (copy_to_user(arg2, &encoded_status,
+                                     sizeof(encoded_status)) !=
+                            UACCESS_SUCCESS) {
+                        return SYSCALL_EFAULT;
+                    }
                 }
                 child->waited = 1;
                 uint32_t child_pid = child->pid;

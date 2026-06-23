@@ -2,7 +2,7 @@
 
 ## Project Overview
 x86 bare metal teaching operating system written in C and x86 assembly (NASM syntax).
-Runs on QEMU i386 emulator. Has QEMU-validated stage-2 boot, shell `help`, syscall ABI, ring-3 syscall negative paths, exception panic, paging, cooperative scheduler, timer preemption, scheduler priority/fairness safety proof, E820 memory-map detection, physical frame allocator lifecycle, heap allocator, ring-3 user-mode, per-process address-space switching, VFS-backed file syscalls, ELF loading, true fork parent/child return, blocking wait with zombie reap, exit scheduling, exec image replacement, and shell `echo ok` gates. These are evidence-scoped proofs, not a complete operating system claim. Current security posture is red/blue regression: `make test-red-team` attempts known attacks, proves current blue controls block them, and writes `build/red-team/findings.jsonl`.
+Runs on QEMU i386 emulator. Has QEMU-validated stage-2 boot, shell `help`, syscall ABI, ring-3 syscall negative paths, exception panic, paging, cooperative scheduler, timer preemption, scheduler priority/fairness safety proof, E820 memory-map detection, physical frame allocator lifecycle, heap allocator, ring-3 user-mode, per-process address-space switching, VFS-backed file syscalls, ELF loading, true fork parent/child return, blocking wait with zombie reap, exit scheduling, exec image replacement, per-process descriptor ownership, argv/envp exec startup, COW/demand/guard VM evidence, waitpid options, minimal signal delivery, blocking pipes, and shell `echo ok` gates. These are evidence-scoped proofs, not a complete operating system claim. Current security posture is red/blue regression: `make test-red-team` attempts known attacks, proves current blue controls block them, and writes `build/red-team/findings.jsonl`.
 Before advanced core work, read `harness-engineering/harness_profile.yaml` and `harness-engineering/13-agent-routing-and-risk/README.md`.
 
 ## Tech Stack
@@ -72,10 +72,10 @@ make clean
 - Optional markers: `TESTS_PASS`
 - Failure markers: `BOOT_DISK_ERROR`, `KERNEL_PANIC`
 - Feature status is evidence-scoped: `make test` proves boot, COM1 markers, keyboard IRQ input, shell dispatch, VGA output, and `help` rendering.
-- `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, VFS-backed ring-3 file syscall evidence, ELF loader-prep evidence, process syscall + VFS-backed ELF entry transfer, fork parent/child return, blocking wait/exit/zombie reap, copied-address-space isolation, exec image replacement, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, ramdisk block-device evidence, kernel VFS + flat SimpleFS evidence, and `echo ok` shell I/O.
+- `make test-deep` adds syscall ABI, ring-3 syscall negative-path validation, VFS-backed ring-3 file syscall evidence, ELF loader-prep evidence, process syscall + VFS-backed ELF entry transfer, fork parent/child return, blocking wait/exit/zombie reap, copied-address-space isolation, exec image replacement, argv/envp startup, per-process descriptor ownership, waitpid WNOHANG/specific-child/status/negative-path evidence, minimal SIGTERM/SIGKILL/SIGCHLD-pending signal behavior, blocking pipe create/read/write/EOF/broken-write evidence, structured exceptions, paging map/unmap/write/unmap-fault evidence, explicit cooperative scheduler context execution, timer-driven preemption evidence, E820-backed usable-memory detection, physical frame allocation/free/reuse/exhaustion evidence, heap allocator behavior, ring-3 user-mode transition with user/supervisor page fault, per-process CR3/address-space isolation evidence, timer ticks, scheduler priority/fairness safety evidence, ramdisk block-device evidence, kernel VFS + flat SimpleFS evidence, COW/demand/guard VM evidence, and `echo ok` shell I/O.
 - `make test-red-team` and `make test-blue-team` are separate from `make test-deep`; they are guest-only adversarial regression gates, not production security passes.
-- Still not proven: copy-on-write fork, `waitpid` options, argv/envp process startup, per-process file-descriptor tables, signals, production-grade virtual memory, SMP-safe scheduling, persistent storage, networking, or graphics.
-- Current next work order: replace the global VFS descriptor table with per-process descriptor ownership, define fork inheritance and close-on-exec behavior, then add argv/envp and lifecycle stress gates.
+- Still not proven: swap, automatic stack growth, full POSIX signal handlers/masks, nonblocking pipe mode, select/poll, production-grade virtual memory, SMP-safe scheduling, persistent storage, networking, or graphics.
+- Current next work order: continue guest-only red/blue fuzzing and lifecycle stress gates without broadening into networking, graphics, or untested shell breadth.
 
 ## Memory Map
 | Address | Content |
@@ -104,7 +104,7 @@ make clean
 - KHÔNG dùng `-serial mon:stdio` as automated evidence channel
 - KHÔNG chạy QEMU bằng root
 - KHÔNG passthrough host disks/devices vào QEMU boot tests
-- KHÔNG claim copy-on-write fork, `waitpid` options, argv/envp, per-process descriptor ownership, networking, graphics, persistent storage, or extra shell breadth without targeted runtime tests and updated `harness_profile.yaml` claim status
+- KHÔNG claim full POSIX signals, nonblocking pipes, select/poll, networking, graphics, persistent storage, or extra shell breadth without targeted runtime tests and updated `harness_profile.yaml` claim status
 - KHÔNG claim full memory protection, full userland syscall coverage, production-grade frame/heap management, persistent storage, networking, or graphics without targeted runtime tests and updated claim status
 
 ## Available Skills

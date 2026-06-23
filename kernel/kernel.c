@@ -1488,6 +1488,12 @@ static __attribute__((noreturn)) void ipc_user_entry(void) {
         syscall_marker(SYSCALL_MARK_IPC_FAIL);
         while (1) {}
     }
+    wait_res = syscall3(SYS_WAITPID, (uint32_t)-1, (uint32_t)&status,
+                        WNOHANG << 1);
+    if (wait_res != (int)SYSCALL_EINVAL) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
     syscall_marker(SYSCALL_MARK_WAITPID_NEGATIVE);
 
     child = syscall3(SYS_FORK, 0, 0, 0);
@@ -1564,6 +1570,25 @@ static __attribute__((noreturn)) void ipc_user_entry(void) {
         syscall_marker(SYSCALL_MARK_IPC_FAIL);
         while (1) {}
     }
+
+    int broken_read_fd = -1;
+    int broken_write_fd = -1;
+    pipe_res = syscall3(SYS_PIPE, (uint32_t)&broken_read_fd,
+                        (uint32_t)&broken_write_fd, 0);
+    if (pipe_res != SYSCALL_SUCCESS || broken_read_fd < 0 ||
+        broken_write_fd < 0) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    (void)syscall3(SYS_CLOSE, broken_read_fd, 0, 0);
+    char broken_byte = 'x';
+    int broken_write = syscall3(SYS_WRITE, broken_write_fd,
+                                (uint32_t)&broken_byte, 1);
+    if (broken_write != (int)SYSCALL_EPIPE) {
+        syscall_marker(SYSCALL_MARK_IPC_FAIL);
+        while (1) {}
+    }
+    (void)syscall3(SYS_CLOSE, broken_write_fd, 0, 0);
     syscall_marker(SYSCALL_MARK_PIPE_EOF);
 
     (void)syscall3(SYS_CLOSE, read_fd, 0, 0);
